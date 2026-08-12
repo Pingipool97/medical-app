@@ -1,0 +1,13 @@
+{
+  "name": "Cartella Intelligente",
+  "short_name": "Cartella",
+  "description": "La tua documentazione clinica, comprensibile e sempre con te.",
+  "start_url": "/paziente",
+  "display": "standalone",
+  "background_color": "#152b53",
+  "theme_color": "#1761d7",
+  "lang": "it",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,801 @@
+// Piattaforma sanitaria — modello dati completo.
+// SQLite in sviluppo; il provider è sostituibile con PostgreSQL senza modifiche al codice applicativo.
+// SQLite non supporta gli enum Prisma: gli stati sono String con costanti applicative in src/lib/constants.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Utenti e ruoli ───────────────────────────
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String
+  role             String // PATIENT | DOCTOR | STAFF | ADMIN | CAREGIVER
+  status           String    @default("ACTIVE") // ACTIVE | PENDING_EMAIL | PENDING_VERIFICATION | SUSPENDED | DELETED
+  emailVerifiedAt  DateTime?
+  phoneEnc         String? // cifrato a campo
+  phoneVerifiedAt  DateTime?
+  twoFactorSecret  String? // cifrato a campo
+  twoFactorEnabled Boolean   @default(false)
+  failedLogins     Int       @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  patientProfile PatientProfile?
+  doctorProfile  DoctorProfile?
+  staffProfile   StaffProfile?
+  notifications  Notification[]
+  consents       ConsentRecord[]
+  auditEvents    AuditLog[]      @relation("actor")
+  delegations    CaregiverDelegation[] @relation("caregiverUser")
+}
+
+model PatientProfile {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id])
+  firstName           String
+  lastName            String
+  birthDate           DateTime
+  biologicalSex       String // M | F
+  codiceFiscaleEnc    String // cifrato
+  codiceFiscaleHash   String    @unique // per lookup/deduplica
+  addressStreet       String?
+  addressCity         String?
+  addressProvince     String?
+  addressZip          String?
+  gpName              String? // medico di base
+  emergencyNameEnc    String?
+  emergencyPhoneEnc   String?
+  healthCardEnc       String? // tessera sanitaria
+  asl                 String?
+  insurance           String?
+  onboardingStep      Int       @default(0)
+  profileCompleteness Int       @default(0) // 0-100, parametro di affidabilità mostrato accanto alle analisi IA
+
+  conditions     Condition[]
+  allergies      Allergy[]
+  medications    Medication[]
+  surgeries      Surgery[]
+  vaccinations   Vaccination[]
+  familyHistory  FamilyHistory[]
+  lifestyle      Lifestyle?
+  vitals         VitalMeasurement[]
+  pregnancy      PregnancyStatus?
+  documents      Document[]
+  labResults     LabResult[]
+  timeline       TimelineEvent[]
+  links          DoctorPatientLink[]
+  requests       ServiceRequest[]
+  conversations  Conversation[]
+  appointments   Appointment[]
+  issuedDocs     IssuedDocument[]
+  aiJobs         AiJob[]
+  delegations    CaregiverDelegation[]
+  waitlist       WaitlistEntry[]
+  problems       ClinicalProblem[]
+}
+
+model DoctorProfile {
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  user               User      @relation(fields: [userId], references: [id])
+  firstName          String
+  lastName           String
+  ordineNumber       String
+  ordineProvince     String
+  vatNumber          String?
+  structureName      String?
+  offices            String? // JSON [{name, address, city}]
+  professionalPhone  String?
+  bio                String?
+  verificationStatus String    @default("PENDING") // PENDING | VERIFIED | REJECTED — un medico non verificato non emette nulla
+  verifiedAt         DateTime?
+  verifiedByUserId   String?
+  verificationNote   String?
+  responseTimeHours  Int       @default(48) // tempo di risposta dichiarato, mostrato al paziente
+
+  specializations DoctorSpecialization[]
+  links           DoctorPatientLink[]
+  requests        ServiceRequest[]
+  conversations   Conversation[]
+  appointments    Appointment[]
+  availabilities  Availability[]
+  availabilityExceptions AvailabilityException[]
+  services        ServiceCatalog[]
+  issuedDocs      IssuedDocument[]
+  staff           StaffProfile[]
+  staffDelegations StaffDelegation[]
+  waitlist        WaitlistEntry[]
+}
+
+model DoctorSpecialization {
+  id               String         @id @default(cuid())
+  doctorId         String
+  doctor           DoctorProfile  @relation(fields: [doctorId], references: [id])
+  specializationId String
+  specialization   Specialization @relation(fields: [specializationId], references: [id])
+
+  @@unique([doctorId, specializationId])
+}
+
+model StaffProfile {
+  id        String        @id @default(cuid())
+  userId    String        @unique
+  user      User          @relation(fields: [userId], references: [id])
+  firstName String
+  lastName  String
+  doctorId  String
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  delegations StaffDelegation[]
+}
+
+// Delega clinica esplicita e temporizzata alla segreteria (mai default)
+model StaffDelegation {
+  id          String        @id @default(cuid())
+  staffId     String
+  staff       StaffProfile  @relation(fields: [staffId], references: [id])
+  doctorId    String
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id])
+  patientId   String? // null = delega generale non clinica; valorizzato = accesso clinico a quel paziente
+  scope       String // AGENDA | ANAGRAFICA | CLINICO
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime      @default(now())
+}
+
+model CaregiverDelegation {
+  id              String         @id @default(cuid())
+  caregiverUserId String
+  caregiverUser   User           @relation("caregiverUser", fields: [caregiverUserId], references: [id])
+  patientId       String
+  patient         PatientProfile @relation(fields: [patientId], references: [id])
+  relation        String // GENITORE | TUTORE | FAMILIARE
+  scope           String // JSON: {diario, documenti, richieste, appuntamenti}
+  expiresAt       DateTime? // per i minori decade automaticamente al 18° compleanno del paziente
+  revokedAt       DateTime?
+  createdAt       DateTime       @default(now())
+}
+
+// Collegamento medico-paziente: nessun accesso senza accettazione di entrambe le parti
+model DoctorPatientLink {
+  id          String         @id @default(cuid())
+  doctorId    String
+  doctor      DoctorProfile  @relation(fields: [doctorId], references: [id])
+  patientId   String
+  patient     PatientProfile @relation(fields: [patientId], references: [id])
+  status      String         @default("PENDING") // PENDING | ACTIVE | REVOKED | ENDED
+  requestedBy String // PATIENT | DOCTOR
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  revokedBy   String?
+  createdAt   DateTime       @default(now())
+
+  @@unique([doctorId, patientId])
+}
+
+// ─────────────────────────── Diario sanitario ───────────────────────────
+
+model Condition {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  name      String
+  status    String         @default("ACTIVE") // ACTIVE | RESOLVED
+  onsetDate DateTime?
+  notes     String?
+  createdAt DateTime       @default(now())
+}
+
+model Allergy {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  allergen  String
+  kind      String // FARMACO | ALIMENTO | AMBIENTALE | ALTRO
+  severity  String // LIEVE | MODERATA | GRAVE
+  reaction  String?
+  notes     String?
+  createdAt DateTime       @default(now())
+}
+
+model Medication {
+  id         String         @id @default(cuid())
+  patientId  String
+  patient    PatientProfile @relation(fields: [patientId], references: [id])
+  name       String
+  atcCode    String?
+  dosage     String?
+  frequency  String?
+  startedAt  DateTime?
+  stoppedAt  DateTime?
+  stopReason String?
+  active     Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+}
+
+model Surgery {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  name      String
+  date      DateTime?
+  hospital  String?
+  notes     String?
+}
+
+model Vaccination {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  name      String
+  date      DateTime?
+  notes     String?
+}
+
+model FamilyHistory {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  relation  String
+  condition String
+  notes     String?
+}
+
+model Lifestyle {
+  id               String         @id @default(cuid())
+  patientId        String         @unique
+  patient          PatientProfile @relation(fields: [patientId], references: [id])
+  smoking          String? // MAI | EX | ATTUALE
+  smokingDetail    String?
+  alcohol          String? // MAI | OCCASIONALE | REGOLARE
+  physicalActivity String? // SEDENTARIO | LEGGERA | MODERATA | INTENSA
+  diet             String?
+  notes            String?
+}
+
+model VitalMeasurement {
+  id         String         @id @default(cuid())
+  patientId  String
+  patient    PatientProfile @relation(fields: [patientId], references: [id])
+  type       String // PESO | PRESSIONE | GLICEMIA | SPO2 | FC | TEMPERATURA | ALTEZZA
+  value      Float
+  value2     Float? // diastolica per la pressione
+  unit       String
+  measuredAt DateTime
+  source     String         @default("MANUALE") // MANUALE | DOCUMENTO
+  createdAt  DateTime       @default(now())
+}
+
+// Stato con scadenza, non flag perenne: alla data presunta il sistema chiede aggiornamento
+model PregnancyStatus {
+  id              String         @id @default(cuid())
+  patientId       String         @unique
+  patient         PatientProfile @relation(fields: [patientId], references: [id])
+  isPregnant      Boolean        @default(false)
+  isBreastfeeding Boolean        @default(false)
+  dueDate         DateTime?
+  confirmedAt     DateTime?
+  needsUpdate     Boolean        @default(false)
+}
+
+// ─────────────────────────── Documentale ───────────────────────────
+
+model Document {
+  id                 String         @id @default(cuid())
+  patientId          String
+  patient            PatientProfile @relation(fields: [patientId], references: [id])
+  uploadedByUserId   String
+  uploadedByRole     String
+  title              String
+  docTypeCode        String // FK logica su DocumentTypeDef.code
+  specializationCode String?
+  docDate            DateTime?
+  dateConfirmed      Boolean        @default(false) // la data estratta va confermata
+  issuer             String? // struttura/medico emittente
+  notes              String?
+  fileName           String
+  filePath           String // su disco, cifrato AES-256-GCM
+  mimeType           String
+  fileSize           Int
+  sha256             String // deduplica
+  status             String         @default("UPLOADED") // UPLOADED | PROCESSING | PROCESSED | FAILED | QUARANTINED | NEEDS_REVIEW
+  quarantineReason   String? // es. CF nel documento non coerente con l'intestatario del profilo
+  extractedText      String?
+  extractionQuality  String? // COMPLETA | PARZIALE | ILLEGGIBILE
+  extractedData      String? // JSON: {diagnosi[], terapie[], esamiConsigliati[], followUp[], dataEstratta}
+  ocrConfidence      Float?
+  duplicateOfId      String?
+  thirdPartyFound    Boolean        @default(false)
+  thirdPartyRedacted Boolean        @default(false)
+  problemId          String?
+  problem            ClinicalProblem? @relation(fields: [problemId], references: [id])
+  // Visibilità per-medico ("condivisione per scope, default privato")
+  sharedWith         DocumentShare[]
+  labResults         LabResult[]
+  jobs               ProcessingJob[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  deletedAt          DateTime?
+}
+
+model DocumentShare {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  doctorId   String
+  sharedAt   DateTime @default(now())
+  revokedAt  DateTime?
+  // Copia giuridica del medico: sopravvive alla revoca e alla cancellazione account (obbligo di conservazione)
+  doctorCopyRetained Boolean @default(true)
+
+  @@unique([documentId, doctorId])
+}
+
+model ProcessingJob {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  status     String   @default("QUEUED") // QUEUED | RUNNING | DONE | FAILED
+  attempts   Int      @default(0)
+  maxAttempts Int     @default(3)
+  lastError  String?
+  stepsLog   String? // JSON: [{step, ok, detail, at}] visibile all'utente — l'upload non muore mai in silenzio
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model LabAnalyte {
+  id       String  @id @default(cuid())
+  code     String  @unique // es. HGB, GLU, TSH
+  name     String
+  unit     String
+  refLow   Float?
+  refHigh  Float?
+  category String?
+  aliases  String? // JSON di sinonimi per il matching estrattivo
+  active   Boolean @default(true)
+
+  results LabResult[]
+}
+
+model LabResult {
+  id             String         @id @default(cuid())
+  documentId     String
+  document       Document       @relation(fields: [documentId], references: [id])
+  patientId      String
+  patient        PatientProfile @relation(fields: [patientId], references: [id])
+  analyteId      String?
+  analyte        LabAnalyte?    @relation(fields: [analyteId], references: [id])
+  rawName        String // com'era scritto nel referto
+  value          Float
+  unit           String?
+  refLow         Float?
+  refHigh        Float?
+  outOfRange     Boolean        @default(false)
+  implausible    Boolean        @default(false) // valore fisiologicamente implausibile → quarantena, mai in grafico
+  confidence     Float          @default(1)
+  humanConfirmed Boolean        @default(false) // i grafici distinguono i punti non confermati
+  measuredAt     DateTime?
+  createdAt      DateTime       @default(now())
+}
+
+model ClinicalProblem {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  title     String
+  status    String         @default("APERTO") // APERTO | RISOLTO
+  createdAt DateTime       @default(now())
+
+  documents Document[]
+  events    TimelineEvent[]
+}
+
+model TimelineEvent {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  type      String // DOCUMENTO | MISURAZIONE | APPUNTAMENTO | DOCUMENTO_EMESSO | TERAPIA | NOTA
+  date      DateTime
+  title     String
+  summary   String?
+  refType   String?
+  refId     String?
+  flags     String? // JSON: {outOfRange, urgent, unconfirmed}
+  specializationCode String?
+  problemId String?
+  problem   ClinicalProblem? @relation(fields: [problemId], references: [id])
+  createdAt DateTime       @default(now())
+
+  @@index([patientId, date])
+}
+
+// ─────────────────────────── Intelligenza Artificiale ───────────────────────────
+
+model AiFunctionConfig {
+  id          String  @id @default(cuid())
+  functionKey String  @unique // vedi src/lib/constants.ts AI_FUNCTIONS
+  label       String
+  enabled     Boolean @default(true)
+  isCds       Boolean @default(false) // perimetro dispositivo medico: dietro feature flag, OFF di default
+  model       String  @default("claude-haiku-4-5-20251001")
+  temperature Float   @default(0.2)
+  maxTokens   Int     @default(1500)
+}
+
+model PromptTemplate {
+  id          String   @id @default(cuid())
+  functionKey String
+  version     Int
+  content     String
+  active      Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  @@unique([functionKey, version])
+}
+
+model AiJob {
+  id              String          @id @default(cuid())
+  functionKey     String
+  requestedById   String
+  requestedByRole String
+  patientId       String?
+  patient         PatientProfile? @relation(fields: [patientId], references: [id])
+  documentId      String?
+  model           String
+  promptVersion   Int?
+  inputTokens     Int             @default(0)
+  outputTokens    Int             @default(0)
+  costCents       Float           @default(0)
+  status          String          @default("PENDING") // PENDING | DONE | ERROR | BLOCKED_GUARDRAIL | BLOCKED_BUDGET | FALLBACK
+  error           String?
+  pseudonymized   Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+
+  outputs AiOutput[]
+}
+
+// Stato "bozza IA → revisionata dal medico → pubblicata". Le bozze scadono, mai auto-pubblicazione.
+model AiOutput {
+  id                String    @id @default(cuid())
+  jobId             String
+  job               AiJob     @relation(fields: [jobId], references: [id])
+  audience          String // DOCTOR | PATIENT
+  state             String    @default("DRAFT") // DRAFT | REVIEWED | PUBLISHED | REJECTED | EXPIRED
+  contentDraft      String
+  contentFinal      String?
+  sources           String? // JSON: [{documentId, titolo, estratto}] — ogni affermazione ancorata alla fonte
+  coverageNote      String? // dichiarazione di copertura (profilo completo al X%, N farmaci noti)
+  insufficientData  Boolean   @default(false) // "non ho elementi sufficienti" esplicito
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  publishedAt       DateTime?
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
+}
+
+model AiChatMessage {
+  id        String   @id @default(cuid())
+  patientId String
+  doctorUserId String
+  role      String // user | assistant
+  content   String
+  sources   String? // JSON
+  jobId     String?
+  createdAt DateTime @default(now())
+
+  @@index([patientId, doctorUserId])
+}
+
+// ─────────────────────────── Comunicazione ───────────────────────────
+
+// Ogni richiesta è un oggetto con stato, non un messaggio che si perde in chat
+model ServiceRequest {
+  id           String         @id @default(cuid())
+  patientId    String
+  patient      PatientProfile @relation(fields: [patientId], references: [id])
+  doctorId     String
+  doctor       DoctorProfile  @relation(fields: [doctorId], references: [id])
+  typeCode     String // FK logica su RequestTypeDef
+  status       String         @default("NUOVA") // NUOVA | PRESA_IN_CARICO | ATTESA_INFO | EVASA | RIFIUTATA | ANNULLATA
+  subject      String
+  body         String
+  attachments  String? // JSON [documentId]
+  rejectReason String?
+  redFlag      Boolean        @default(false) // sintomi d'allarme rilevati in composizione
+  slaHours     Int?
+  history      String? // JSON [{from,to,byUserId,at,note}] — storico transizioni
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Conversation {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  doctorId  String
+  doctor    DoctorProfile  @relation(fields: [doctorId], references: [id])
+  createdAt DateTime       @default(now())
+
+  messages Message[]
+
+  @@unique([patientId, doctorId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderUserId   String
+  senderRole     String
+  body           String
+  attachments    String? // JSON [documentId]
+  redFlag        Boolean      @default(false)
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+}
+
+// Documenti emessi dal medico verso il paziente (ricette bianche, certificati, piani, referti…)
+model IssuedDocument {
+  id              String         @id @default(cuid())
+  doctorId        String
+  doctor          DoctorProfile  @relation(fields: [doctorId], references: [id])
+  patientId       String
+  patient         PatientProfile @relation(fields: [patientId], references: [id])
+  kind            String // RICETTA_BIANCA | PROMEMORIA_NRE | RICHIESTA_ESAMI | CERTIFICATO | PIANO_TERAPEUTICO | REFERTO_VISITA | ISTRUZIONI | COMUNICAZIONE
+  title           String
+  content         String // JSON strutturato + testo
+  nreCode         String? // promemoria di ricetta dematerializzata emessa via Sistema TS (non emessa qui)
+  signatureStatus String         @default("NON_FIRMATO") // NON_FIRMATO | FIRMATO_FEA | FIRMATO_FEQ — dipende dal provider firma configurato
+  signedAt        DateTime?
+  contentHash     String? // verifica di integrità
+  sentAt          DateTime?
+  readAt          DateTime?
+  requestId       String? // se emesso in evasione di una richiesta
+  createdAt       DateTime       @default(now())
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  eventKey  String
+  title     String
+  body      String
+  channel   String    @default("INAPP") // INAPP | EMAIL | SMS | PUSH — l'email non contiene mai contenuto clinico, solo link autenticato
+  status    String    @default("SENT") // SENT | FAILED | PENDING
+  readAt    DateTime?
+  refType   String?
+  refId     String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model NotificationRule {
+  id       String  @id @default(cuid())
+  eventKey String  @unique
+  label    String
+  channels String // JSON ["INAPP","EMAIL"]
+  enabled  Boolean @default(true)
+}
+
+model MessageTemplate {
+  id        String   @id @default(cuid())
+  key       String
+  channel   String // EMAIL | SMS | PUSH | PDF
+  version   Int      @default(1)
+  subject   String?
+  body      String // con variabili {{nome}}, {{link}}, …
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, channel, version])
+}
+
+// ─────────────────────────── Agenda e prenotazioni ───────────────────────────
+
+model ServiceCatalog {
+  id          String        @id @default(cuid())
+  doctorId    String
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id])
+  name        String
+  durationMin Int           @default(30)
+  priceCents  Int           @default(0)
+  mode        String        @default("ENTRAMBI") // PRESENZA | VIDEO | ENTRAMBI
+  active      Boolean       @default(true)
+
+  appointments Appointment[]
+  waitlist     WaitlistEntry[]
+}
+
+model Availability {
+  id        String        @id @default(cuid())
+  doctorId  String
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id])
+  weekday   Int // 0=domenica … 6=sabato
+  startTime String // "09:00"
+  endTime   String // "13:00"
+  validFrom DateTime?
+  validTo   DateTime?
+}
+
+model AvailabilityException {
+  id       String        @id @default(cuid())
+  doctorId String
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id])
+  date     DateTime
+  closed   Boolean       @default(true)
+  reason   String?
+}
+
+model Appointment {
+  id             String          @id @default(cuid())
+  doctorId       String
+  doctor         DoctorProfile   @relation(fields: [doctorId], references: [id])
+  patientId      String
+  patient        PatientProfile  @relation(fields: [patientId], references: [id])
+  serviceId      String?
+  service        ServiceCatalog? @relation(fields: [serviceId], references: [id])
+  startsAt       DateTime
+  endsAt         DateTime
+  mode           String          @default("PRESENZA") // PRESENZA | VIDEO
+  status         String          @default("PRENOTATO") // PRENOTATO | CONFERMATO | ANNULLATO | COMPLETATO | NO_SHOW
+  cancelReason   String?
+  cancelledBy    String?
+  videoRoomId    String? // valorizzato solo se provider video configurato
+  questionnaire  String? // JSON questionario pre-visita
+  doctorNotes    String? // note del medico durante la visita → base per il referto post-visita
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([doctorId, startsAt])
+}
+
+model WaitlistEntry {
+  id         String          @id @default(cuid())
+  doctorId   String
+  doctor     DoctorProfile   @relation(fields: [doctorId], references: [id])
+  patientId  String
+  patient    PatientProfile  @relation(fields: [patientId], references: [id])
+  serviceId  String?
+  service    ServiceCatalog? @relation(fields: [serviceId], references: [id])
+  notifiedAt DateTime?
+  createdAt  DateTime        @default(now())
+}
+
+// ─────────────────────────── Amministrazione e conformità ───────────────────────────
+
+model ProviderConfig {
+  id              String    @id @default(cuid())
+  kind            String // AI | OCR | EMAIL | SMS | PUSH | STORAGE | VIDEO | PAGAMENTI | FIRMA | SSN
+  name            String
+  baseUrl         String?
+  apiKeyEnc       String? // cifrata a riposo, mostrata mascherata, mai loggata, mai al frontend
+  settings        String? // JSON non sensibile
+  enabled         Boolean   @default(false)
+  lastTestAt      DateTime?
+  lastTestOk      Boolean?
+  lastTestMessage String?
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([kind, name])
+}
+
+model SystemSetting {
+  key   String @id
+  value String // JSON
+}
+
+model FeatureFlag {
+  key         String  @id
+  label       String
+  description String?
+  enabled     Boolean @default(false)
+  isCdsGate   Boolean @default(false) // attivarlo è una scelta regolatoria consapevole: richiede conferma esplicita
+}
+
+// Banca dati strutturata delle interazioni: il controllo è deterministico (motore su queste regole),
+// l'LLM al massimo normalizza i nomi commerciali verso il principio attivo. Gestita da anagrafiche admin.
+model DrugInteractionRule {
+  id         String  @id @default(cuid())
+  substanceA String // principio attivo o classe (lowercase)
+  substanceB String
+  severity   String // GRAVE | MODERATA | LIEVE
+  note       String
+  active     Boolean @default(true)
+
+  @@index([substanceA])
+  @@index([substanceB])
+}
+
+// Controindicazioni singola sostanza (gravidanza, allattamento, allergie crociate)
+model DrugContraindication {
+  id        String  @id @default(cuid())
+  substance String
+  condition String // GRAVIDANZA | ALLATTAMENTO | ALLERGIA:<allergene>
+  severity  String
+  note      String
+  active    Boolean @default(true)
+
+  @@index([substance])
+}
+
+model Specialization {
+  id     String  @id @default(cuid())
+  code   String  @unique
+  name   String
+  active Boolean @default(true)
+
+  doctors DoctorSpecialization[]
+}
+
+model DocumentTypeDef {
+  code   String  @id
+  name   String
+  active Boolean @default(true)
+}
+
+model RequestTypeDef {
+  code            String  @id
+  name            String
+  active          Boolean @default(true)
+  defaultSlaHours Int     @default(48)
+}
+
+model ConsentVersion {
+  id          String   @id @default(cuid())
+  kind        String // PRIVACY | ART9_SALUTE | TERMINI | IA_TRATTAMENTO
+  version     Int
+  title       String
+  text        String
+  active      Boolean  @default(true)
+  publishedAt DateTime @default(now())
+
+  records ConsentRecord[]
+
+  @@unique([kind, version])
+}
+
+model ConsentRecord {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id])
+  consentVersionId String
+  consentVersion   ConsentVersion @relation(fields: [consentVersionId], references: [id])
+  acceptedAt       DateTime       @default(now())
+  revokedAt        DateTime?
+  ip               String?
+}
+
+// Ogni accesso a un dato clinico è loggato (chi, cosa, quando, da dove) e consultabile dal paziente
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actor       User?    @relation("actor", fields: [actorUserId], references: [id])
+  actorRole   String?
+  action      String // LOGIN | READ | CREATE | UPDATE | DELETE | EXPORT | AI_REQUEST | SHARE | REVOKE | ADMIN_CONFIG | GUARDRAIL_BLOCK
+  targetType  String?
+  targetId    String?
+  patientId   String? // per il log accessi consultabile dal paziente
+  ip          String?
+  userAgent   String?
+  metadata    String? // JSON — mai chiavi o contenuti sensibili
+  createdAt   DateTime @default(now())
+
+  @@index([patientId, createdAt])
+  @@index([actorUserId, createdAt])
+}

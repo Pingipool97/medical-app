@@ -1,0 +1,10 @@
+node_modules/
+.next/
+storage/
+prisma/*.db-journal
+.env
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma/dev.db NON è ignorato di proposito: è il contenuto della demo online,
+# viaggia nel repo e viene copiato in /tmp all'avvio (vedi src/lib/db.ts).

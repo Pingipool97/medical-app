@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { LogoutButton, FontSizeToggle, NavLinks, BottomNav } from './shell-client';
 import { Logo } from './logo';
 import { Icon } from './icons';
+import { allowedDemoRoles } from '@/lib/demo-access';
 
 // Shell applicativa con navigazione distinta per ruolo: due esperienze davvero diverse,
 // non la stessa schermata con pulsanti nascosti. Su mobile: barra inferiore.
@@ -57,11 +58,16 @@ const NAV: Record<string, { href: string; label: string; icon: string }[]> = {
 // Selettore di ruolo per lo sviluppo: attivo solo con DEV_LOGIN=true in .env.
 // Permette di passare da una vista all'altra con un click, senza credenziali.
 function DevRoleSwitcher({ current }: { current: string }) {
-  if (process.env.DEV_LOGIN !== 'true') return null;
-  const roles: [string, string][] = [['PATIENT', 'Paziente'], ['DOCTOR', 'Medico'], ['ADMIN', 'Admin']];
+  const allowed = allowedDemoRoles();
+  if (allowed.length === 0) return null;
+  const LABEL: Record<string, string> = { PATIENT: 'Paziente', DOCTOR: 'Medico', ADMIN: 'Admin' };
+  const roles: [string, string][] = allowed.map((r) => [r, LABEL[r]]);
+  const devMode = process.env.DEV_LOGIN === 'true';
   return (
     <div className="px-5 py-3 border-t border-slate-200 bg-amber-50/60">
-      <p className="text-[10px] uppercase tracking-wide text-amber-700 mb-1.5 font-semibold">Vista (solo sviluppo)</p>
+      <p className="text-[10px] uppercase tracking-wide text-amber-700 mb-1.5 font-semibold">
+        {devMode ? 'Vista (solo sviluppo)' : 'Vista dimostrativa'}
+      </p>
       <div className="flex gap-1.5">
         {roles.map(([role, label]) => (
           <a key={role} href={`/api/dev-login?role=${role}`}
@@ -80,7 +86,7 @@ export default async function AppShell({ role, children }: { role: string; child
   const nav = NAV[role] ?? [];
   const unread = await unreadCount(session.userId);
   const notifHref = role === 'PATIENT' ? '/paziente/notifiche' : role === 'DOCTOR' ? '/medico/notifiche' : role === 'ADMIN' ? '/admin' : '/segreteria';
-  const devMode = process.env.DEV_LOGIN === 'true';
+  const demoMode = allowedDemoRoles().length > 0;
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
@@ -108,7 +114,7 @@ export default async function AppShell({ role, children }: { role: string; child
           <Logo variant="full" className="h-7 w-auto" priority />
         </Link>
         <div className="flex items-center gap-4 text-slate-600">
-          {devMode && (
+          {demoMode && (
             <a href={`/api/dev-login?role=${role === 'PATIENT' ? 'DOCTOR' : 'PATIENT'}`} className="text-xs underline text-amber-700">
               {role === 'PATIENT' ? 'Vista medico' : 'Vista paziente'}
             </a>

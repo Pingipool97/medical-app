@@ -1,9 +1,19 @@
 import Link from 'next/link';
 import { Logo } from '@/components/logo';
+import { allowedDemoRoles } from '@/lib/demo-access';
 import LoginForm from './form';
 
+const ROLE_LABEL: Record<string, string> = {
+  PATIENT: 'Entra come Paziente',
+  DOCTOR: 'Entra come Medico',
+  ADMIN: 'Entra come Admin',
+};
+
 export default function LoginPage() {
+  // DEMO_MODE apre solo paziente e medico; l'admin compare solo in locale (DEV_LOGIN).
+  const demoRoles = allowedDemoRoles();
   const devMode = process.env.DEV_LOGIN === 'true';
+
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md space-y-4">
@@ -15,14 +25,23 @@ export default function LoginPage() {
           <p className="text-sm text-slate-600 mt-1">Area riservata</p>
           <LoginForm />
         </div>
-        {devMode && (
+
+        {demoRoles.length > 0 && (
           <div className="card p-5 border-dashed">
-            <p className="text-sm font-semibold text-slate-800">Accesso rapido (solo sviluppo)</p>
-            <p className="text-xs text-slate-500 mt-0.5 mb-3">Entra con un account demo senza password. Da dentro l’app puoi cambiare vista in ogni momento.</p>
+            <p className="text-sm font-semibold text-slate-800">
+              {devMode ? 'Accesso rapido (solo sviluppo)' : 'Prova la piattaforma'}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5 mb-3">
+              {devMode
+                ? 'Entra con un account demo senza password. Da dentro l’app puoi cambiare vista in ogni momento.'
+                : 'Entra in un account dimostrativo con dati di esempio. Nessun dato reale di pazienti.'}
+            </p>
             <div className="flex flex-wrap gap-2">
-              <a href="/api/dev-login?role=PATIENT" className="btn-secondary text-sm">Entra come Paziente</a>
-              <a href="/api/dev-login?role=DOCTOR" className="btn-secondary text-sm">Entra come Medico</a>
-              <a href="/api/dev-login?role=ADMIN" className="btn-secondary text-sm">Entra come Admin</a>
+              {demoRoles.map((role) => (
+                <a key={role} href={`/api/dev-login?role=${role}`} className="btn-secondary text-sm">
+                  {ROLE_LABEL[role]}
+                </a>
+              ))}
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200">
               <p className="text-sm font-semibold text-slate-800">Anteprime</p>

@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { buildSessionPayload, createSession } from '@/lib/auth';
 import { audit } from '@/lib/audit';
+import { allowedDemoRoles } from '@/lib/demo-access';
 
-// Accesso rapido di SVILUPPO: crea la sessione di un account demo senza credenziali né 2FA.
-// Attivo SOLO con DEV_LOGIN=true in .env — in produzione la variabile non va impostata
-// e questa route risponde 404. Il login vero resta intatto ("a dormire", non rimosso).
+// Accesso rapido agli account dimostrativi: crea la sessione senza credenziali né 2FA.
+//
+// Due interruttori distinti, perché servono a due cose diverse:
+//
+//  DEMO_MODE=true  → ammesso anche online. Apre SOLO paziente e medico, cioè i due ruoli
+//                    che si vogliono far vedere. Sono account seminati con dati finti.
+//  DEV_LOGIN=true  → solo in locale. Aggiunge l'ADMIN.
+//
+// L'admin non passa mai da DEMO_MODE: da lì si vedono utenti, audit log, chiavi dei
+// provider e dati clinici di tutti. Un indirizzo che regala quel ruolo a chi lo conosce
+// non è una demo, è una porta aperta.
 
 const DEMO_BY_ROLE: Record<string, string> = {
   PATIENT: 'paziente@demo.it',
@@ -16,13 +25,19 @@ const DEMO_BY_ROLE: Record<string, string> = {
 const DEST: Record<string, string> = { PATIENT: '/paziente', DOCTOR: '/medico', ADMIN: '/admin' };
 
 export async function GET(req: NextRequest) {
-  if (process.env.DEV_LOGIN !== 'true') {
+  const allowed = allowedDemoRoles();
+  if (allowed.length === 0) {
     return NextResponse.json({ error: 'Non disponibile' }, { status: 404 });
   }
-  const role = req.nextUrl.searchParams.get('role') ?? 'PATIENT';
-  const email = DEMO_BY_ROLE[role];
-  if (!email) return NextResponse.json({ error: 'Ruolo non valido' }, { status: 400 });
 
+  const role = req.nextUrl.searchParams.get('role') ?? 'PATIENT';
+  // Un ruolo non ammesso risponde 404 come se la rotta non esistesse: non si conferma
+  // a chi prova che l'indirizzo è giusto e manca solo il permesso.
+  if (!allowed.includes(role)) {
+    return NextResponse.json({ error: 'Non disponibile' }, { status: 404 });
+  }
+
+  const email = DEMO_BY_ROLE[role];
   const user = await db.user.findUnique({
     where: { email },
     include: { patientProfile: true, doctorProfile: true, staffProfile: true },
@@ -30,6 +45,6 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Utente demo non trovato: esegui npm run db:seed' }, { status: 404 });
 
   await createSession(buildSessionPayload(user, false));
-  await audit({ actorUserId: user.id, actorRole: user.role, action: 'LOGIN', metadata: { devLogin: true } });
+  await audit({ actorUserId: user.id, actorRole: user.role, action: 'LOGIN', metadata: { demoLogin: true, role } });
   return NextResponse.redirect(new URL(DEST[role], req.url), 303);
 }

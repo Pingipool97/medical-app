@@ -33,7 +33,27 @@ export function FontSizeToggle() {
 
 // Navigazione con voce attiva evidenziata: serve il pathname corrente, quindi è client.
 // L'attivo è il match più lungo, altrimenti "/medico" resterebbe acceso su ogni sottopagina.
-export function NavLinks({ items }: { items: { href: string; label: string; icon: string }[] }) {
+/** Segno che la voce è inclusa nel piano Premium; sparisce quando l'abbonamento è attivo. */
+function PremiumMark() {
+  return (
+    <span
+      title="Funzione inclusa nel piano Premium"
+      aria-label="Funzione Premium"
+      className="ml-auto shrink-0 text-amber-500"
+    >
+      <Icon name="crown" className="w-4 h-4" />
+    </span>
+  );
+}
+
+export function NavLinks({
+  items,
+  premiumHrefs = [],
+}: {
+  items: { href: string; label: string; icon: string }[];
+  /** Voci da marcare con la corona: chi ha già il Premium riceve un elenco vuoto. */
+  premiumHrefs?: string[];
+}) {
   const pathname = usePathname() ?? '';
   const active = items.reduce<string | null>((best, item) => {
     const hit = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -57,7 +77,8 @@ export function NavLinks({ items }: { items: { href: string; label: string; icon
             }`}
           >
             <Icon name={item.icon} className={`w-[18px] h-[18px] shrink-0 ${isActive ? 'text-brand-700' : 'text-slate-400'}`} />
-            {item.label}
+            <span className="truncate">{item.label}</span>
+            {premiumHrefs.includes(item.href) && <PremiumMark />}
           </Link>
         );
       })}
@@ -107,10 +128,12 @@ export function MobileMenu({
   items,
   displayName,
   notifHref,
+  premiumHrefs = [],
 }: {
   items: { href: string; label: string; icon: string }[];
   displayName: string;
   notifHref: string;
+  premiumHrefs?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname() ?? '';
@@ -187,7 +210,8 @@ export function MobileMenu({
                     }`}
                   >
                     <Icon name={item.icon} className={`w-[18px] h-[18px] shrink-0 ${isActive ? 'text-brand-700' : 'text-slate-400'}`} />
-                    {item.label}
+                    <span className="truncate">{item.label}</span>
+                    {premiumHrefs.includes(item.href) && <PremiumMark />}
                   </Link>
                 );
               })}

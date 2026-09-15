@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { Icon } from './icons';
 import {
@@ -61,7 +61,9 @@ type Props = {
   emptyHint?: string;
 };
 
-const HOUR_REM = 3.5; // altezza di un'ora nella griglia
+const HOUR_REM = 3.5; // altezza di un'ora nella griglia, su schermi larghi
+const HOUR_REM_NARROW = 2.5; // su telefono: 14 ore a 3.5rem sarebbero mezzo metro di scorrimento
+const NARROW_PX = 768;
 
 function pad(n: number) {
   return String(n).padStart(2, '0');
@@ -138,6 +140,21 @@ export default function Calendar({
 }: Props) {
   const [colorMode, setColorMode] = useState<ColorMode>(initialColorMode ?? colorModes[0] ?? 'service');
 
+  // Schermo stretto: la vista settimana significherebbe sette colonne da scorrere in
+  // orizzontale e quasi cinquanta rem in verticale. Si decide dopo il mount, perché in
+  // SSR la larghezza non esiste e un valore diverso fra server e client romperebbe
+  // l'idratazione.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${NARROW_PX - 1}px)`);
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  const hourRem = narrow ? HOUR_REM_NARROW : HOUR_REM;
+
   /** Chiave palette dell'evento nella modalità attiva, con ricadute sensate se manca. */
   const colorOf = (e: CalEvent): string => {
     if (colorMode === 'status') return STATUS_COLOR[e.status] ?? 'slate';
@@ -146,6 +163,12 @@ export default function Calendar({
   };
   const [view, setView] = useState<CalendarView>(initialView);
   const [anchor, setAnchor] = useState(initialDate ?? today);
+  // Su telefono la vista predefinita diventa il giorno, ma solo finché l'utente non
+  // sceglie da sé: una scelta esplicita non va sovrascritta al primo ridimensionamento.
+  const [viewTouched, setViewTouched] = useState(false);
+  useEffect(() => {
+    if (!viewTouched && narrow && view === 'week') setView('day');
+  }, [narrow, viewTouched, view]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ day: string; min: number } | null>(null);
   // Il drag usa i pointer event, non l'HTML5 drag&drop: quest'ultimo non esiste su
@@ -154,8 +177,24 @@ export default function Calendar({
   const [pending, startTransition] = useTransition();
   const gridRef = useRef<HTMLDivElement>(null);
 
-  const gridStart = dayStartHour * 60;
-  const gridEnd = dayEndHour * 60;
+  // Fascia oraria disegnata: si stringe attorno agli appuntamenti effettivi invece di
+  // mostrare sempre 07-21. Uno studio che lavora 9-13 non deve far scorrere otto ore
+  // vuote per vedere la mattina — su telefono era il problema principale.
+  const { gridStart, gridEnd } = useMemo(() => {
+    const minimo = dayStartHour * 60;
+    const massimo = dayEndHour * 60;
+    const visibili = events.filter((e) => e.endMin > minimo && e.startMin < massimo);
+    if (visibili.length === 0) return { gridStart: 8 * 60, gridEnd: 20 * 60 };
+
+    const primo = Math.min(...visibili.map((e) => e.startMin));
+    const ultimo = Math.max(...visibili.map((e) => e.endMin));
+    // Un'ora di respiro sopra e sotto, arrotondata all'ora piena, dentro i limiti dati.
+    const start = Math.max(minimo, Math.floor(primo / 60) * 60 - 60);
+    const end = Math.min(massimo, Math.ceil(ultimo / 60) * 60 + 60);
+    // Almeno sei ore, altrimenti una giornata con un solo appuntamento sembra rotta.
+    return end - start >= 360 ? { gridStart: start, gridEnd: end } : { gridStart: start, gridEnd: Math.min(massimo, start + 360) };
+  }, [events, dayStartHour, dayEndHour]);
+
   const totalMin = gridEnd - gridStart;
 
   // Giorni visibili nella vista corrente
@@ -284,7 +323,7 @@ export default function Calendar({
     window.addEventListener('pointercancel', onCancel);
   };
 
-  const hours = Array.from({ length: dayEndHour - dayStartHour }, (_, i) => dayStartHour + i);
+  const hours = Array.from({ length: Math.round(totalMin / 60) }, (_, i) => Math.round(gridStart / 60) + i);
 
   return (
     <div className="card overflow-hidden">
@@ -339,7 +378,7 @@ export default function Calendar({
             <button
               key={v}
               type="button"
-              onClick={() => setView(v)}
+              onClick={() => { setViewTouched(true); setView(v); }}
               aria-pressed={view === v}
               className={`px-3 py-1.5 text-sm ${
                 view === v ? 'bg-brand-700 text-white font-semibold' : 'bg-white text-slate-700 hover:bg-slate-50'
@@ -446,7 +485,7 @@ export default function Calendar({
               {/* Colonna ore */}
               <div>
                 {hours.map((h) => (
-                  <div key={h} style={{ height: `${HOUR_REM}rem` }} className="relative">
+                  <div key={h} style={{ height: `${hourRem}rem` }} className="relative">
                     <span className="absolute -top-2 right-1.5 text-[11px] text-slate-400 tabular-nums">{pad(h)}:00</span>
                   </div>
                 ))}
@@ -459,7 +498,7 @@ export default function Calendar({
                   <div
                     key={day}
                     className="relative border-l border-slate-200"
-                    style={{ height: `${hours.length * HOUR_REM}rem` }}
+                    style={{ height: `${hours.length * hourRem}rem` }}
                     data-day={day}
                     onClick={
                       canEdit && onCreate
@@ -473,14 +512,14 @@ export default function Calendar({
                   >
                     {/* Righe orarie */}
                     {hours.map((h) => (
-                      <div key={h} style={{ height: `${HOUR_REM}rem` }} className="border-b border-slate-100 pointer-events-none" />
+                      <div key={h} style={{ height: `${hourRem}rem` }} className="border-b border-slate-100 pointer-events-none" />
                     ))}
 
                     {/* Indicatore di rilascio durante il drag */}
                     {dropTarget && dropTarget.day === day && (
                       <div
                         className="absolute inset-x-1 h-0.5 bg-brand-600 rounded pointer-events-none z-20"
-                        style={{ top: `${((dropTarget.min - gridStart) / totalMin) * hours.length * HOUR_REM}rem` }}
+                        style={{ top: `${((dropTarget.min - gridStart) / totalMin) * hours.length * hourRem}rem` }}
                       >
                         <span className="absolute -top-4 left-0 text-[11px] font-semibold text-brand-700 bg-white px-1 rounded tabular-nums">
                           {minToTime(dropTarget.min)}
@@ -491,8 +530,8 @@ export default function Calendar({
                     {/* Eventi */}
                     {evs.map((e) => {
                       const c = patientColor(colorOf(e));
-                      const top = ((Math.max(e.startMin, gridStart) - gridStart) / totalMin) * hours.length * HOUR_REM;
-                      const height = ((Math.min(e.endMin, gridEnd) - Math.max(e.startMin, gridStart)) / totalMin) * hours.length * HOUR_REM;
+                      const top = ((Math.max(e.startMin, gridStart) - gridStart) / totalMin) * hours.length * hourRem;
+                      const height = ((Math.min(e.endMin, gridEnd) - Math.max(e.startMin, gridStart)) / totalMin) * hours.length * hourRem;
                       const width = 100 / e.cols;
                       const short = height < 2;
                       const body = (

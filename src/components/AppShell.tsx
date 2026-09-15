@@ -6,6 +6,7 @@ import { LogoutButton, FontSizeToggle, NavLinks, BottomNav, MobileMenu } from '.
 import { Logo } from './logo';
 import { Icon } from './icons';
 import { allowedDemoRoles, isDemoAccount } from '@/lib/demo-access';
+import { getPlanState } from '@/lib/subscription';
 
 // Shell applicativa con navigazione distinta per ruolo: due esperienze davvero diverse,
 // non la stessa schermata con pulsanti nascosti. Su mobile: barra inferiore.
@@ -86,7 +87,18 @@ export default async function AppShell({ role, children }: { role: string; child
   const session = await getSession();
   if (!session) redirect('/login');
   const nav = NAV[role] ?? [];
-  const unread = await unreadCount(session.userId);
+
+  // Il piano serve solo al paziente, per la corona accanto alle funzioni a pagamento.
+  // Va letto insieme alle notifiche, non dopo: due query in fila costerebbero il doppio
+  // su ogni singola pagina dell'app.
+  const [unread, plan] = await Promise.all([
+    unreadCount(session.userId),
+    role === 'PATIENT' || role === 'CAREGIVER' ? getPlanState(session.userId) : Promise.resolve(null),
+  ]);
+
+  // Corona sulle voci che il piano attuale non comprende: con il Premium attivo
+  // l'elenco è vuoto e il segno sparisce da solo.
+  const premiumHrefs = plan && !plan.isPremium ? ['/paziente/assistente'] : [];
   const notifHref = role === 'PATIENT' ? '/paziente/notifiche' : role === 'DOCTOR' ? '/medico/notifiche' : role === 'ADMIN' ? '/admin' : '/segreteria';
   // Il passaggio rapido fra i ruoli vale solo per gli account dimostrativi.
   const onDemoAccount = allowedDemoRoles().length > 0 && isDemoAccount(session.email);
@@ -102,7 +114,7 @@ export default async function AppShell({ role, children }: { role: string; child
           <p className="text-xs text-slate-500 mt-2 truncate">{session.displayName}</p>
         </div>
         <nav className="flex-1 overflow-y-auto py-3 space-y-0.5" aria-label="Navigazione principale">
-          <NavLinks items={nav} />
+          <NavLinks items={nav} premiumHrefs={premiumHrefs} />
         </nav>
         <DevRoleSwitcher current={role} isDemo={onDemoAccount} />
         <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-between gap-2">
@@ -114,7 +126,7 @@ export default async function AppShell({ role, children }: { role: string; child
       {/* Header mobile */}
       <header className="lg:hidden sticky top-0 z-20 surface-brand border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-1 min-w-0">
-          <MobileMenu items={nav} displayName={session.displayName} notifHref={notifHref} />
+          <MobileMenu items={nav} displayName={session.displayName} notifHref={notifHref} premiumHrefs={premiumHrefs} />
           <Link href={nav[0]?.href ?? '/'} aria-label="HABITUS — home">
             <Logo variant="full" className="h-7 w-auto" priority />
           </Link>

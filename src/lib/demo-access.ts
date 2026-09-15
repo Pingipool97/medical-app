@@ -20,7 +20,8 @@ export function demoEnabled(): boolean {
 }
 
 // Gli unici account su cui ha senso il passaggio rapido da un ruolo all'altro.
-const DEMO_EMAILS = new Set(['paziente@demo.it', 'medico@demo.it', 'admin@demo.it']);
+export const DEMO_EMAILS = ['paziente@demo.it', 'medico@demo.it', 'admin@demo.it'];
+const DEMO_EMAIL_SET = new Set(DEMO_EMAILS);
 
 /**
  * Chi sta usando l'app è dentro un account dimostrativo?
@@ -30,5 +31,5 @@ const DEMO_EMAILS = new Set(['paziente@demo.it', 'medico@demo.it', 'admin@demo.i
  * medico demo. Non è un cambio di vista, è entrare in un altro account.
  */
 export function isDemoAccount(email?: string | null): boolean {
-  return Boolean(email && DEMO_EMAILS.has(email.toLowerCase()));
+  return Boolean(email && DEMO_EMAIL_SET.has(email.toLowerCase()));
 }

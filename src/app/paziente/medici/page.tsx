@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { fmtDate } from '@/lib/format';
+import { DEMO_EMAILS, isDemoAccount } from '@/lib/demo-access';
 import { Badge, Card, EmptyState, PageTitle } from '@/components/ui';
 import { RevokeLinkButton, ConnectDoctorForm } from './client';
 
@@ -21,8 +22,16 @@ export default async function MediciPage() {
   const pending = links.filter((l) => l.status === 'PENDING');
   const knownDoctorIds = links.filter((l) => l.status === 'ACTIVE' || l.status === 'PENDING').map((l) => l.doctorId);
 
+  // Il professionista dimostrativo resta visibile solo a chi sta usando la demo: a un
+  // paziente vero non deve comparire fra i medici a cui chiedere il collegamento.
+  const dentroLaDemo = isDemoAccount(session.email);
+
   const findable = await db.doctorProfile.findMany({
-    where: { verificationStatus: 'VERIFIED', id: { notIn: knownDoctorIds } },
+    where: {
+      verificationStatus: 'VERIFIED',
+      id: { notIn: knownDoctorIds },
+      ...(dentroLaDemo ? {} : { user: { email: { notIn: DEMO_EMAILS } } }),
+    },
     include: { specializations: { include: { specialization: true } } },
     orderBy: { lastName: 'asc' },
   });
@@ -83,7 +92,10 @@ export default async function MediciPage() {
           Qui compaiono solo medici la cui identità è stata verificata dalla piattaforma. Il medico dovrà accettare la tua richiesta prima di vedere i tuoi dati.
         </p>
         {findable.length === 0 ? (
-          <EmptyState title="Nessun altro medico disponibile al momento" />
+          <EmptyState
+            title="Nessun professionista disponibile al momento"
+            hint="Compariranno qui appena si registrano e vengono verificati. Se il tuo professionista ti ha già invitato, trovi la richiesta qui sopra."
+          />
         ) : (
           <ul className="divide-y divide-slate-100">
             {findable.map((d) => (

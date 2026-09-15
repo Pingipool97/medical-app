@@ -459,6 +459,87 @@ async function main() {
         created++;
       }
     }
+
+    // ── Richieste, messaggi e documenti emessi ──
+    // Servono a far vedere l'app viva: senza, ogni sezione della demo è una pagina vuota
+    // e non si capisce a cosa serva.
+
+    const giorniFa = (n: number) => new Date(Date.now() - n * 86400_000);
+
+    const richieste: [string, string, string, string, string][] = [
+      ['prescrizione_farmaco', 'EVASA', 'Ripetizione Ramipril 5 mg', 'Buongiorno, sto per finire la confezione di Ramipril. Potrebbe farmi la ricetta? Grazie.', patient.id],
+      ['certificato', 'PRESA_IN_CARICO', 'Certificato per attività sportiva', 'Mi servirebbe il certificato per l’iscrizione in palestra. Quando posso passare?', patient.id],
+      ['domanda_clinica', 'NUOVA', 'Dubbio sul dosaggio', 'Se salto una dose devo recuperarla o aspetto quella dopo?', patient.id],
+    ];
+    for (const [i, [typeCode, status, subject, body, pid]] of richieste.entries()) {
+      await db.serviceRequest.create({
+        data: {
+          patientId: pid,
+          doctorId: doctor.id,
+          typeCode,
+          status,
+          subject,
+          body,
+          slaHours: 48,
+          createdAt: giorniFa(i + 2),
+        },
+      });
+    }
+
+    // Una conversazione con qualche scambio: la sezione Messaggi altrimenti è vuota.
+    const conv = await db.conversation.create({
+      data: { patientId: patient.id, doctorId: doctor.id },
+    });
+    const scambio: [string, string, string, number][] = [
+      [patUser.id, 'PATIENT', 'Buongiorno dottoressa, dopo la seduta di ieri sento meno rigidità al collo.', 3],
+      [docUser.id, 'DOCTOR', 'Ottima notizia. Continui con gli esercizi due volte al giorno e non forzi la rotazione.', 3],
+      [patUser.id, 'PATIENT', 'Perfetto. Posso riprendere a nuotare?', 2],
+      [docUser.id, 'DOCTOR', 'Sì, ma per ora solo stile libero e senza spingere sui tempi. Ne riparliamo al controllo.', 2],
+    ];
+    for (const [senderUserId, senderRole, body, gg] of scambio) {
+      await db.message.create({
+        data: {
+          conversationId: conv.id,
+          senderUserId,
+          senderRole,
+          body,
+          createdAt: giorniFa(gg),
+          readAt: giorniFa(gg),
+        },
+      });
+    }
+
+    // Documenti emessi dal professionista, visibili al paziente in "Ricevuti".
+    const emessi: [string, string, string, number][] = [
+      ['RICETTA_BIANCA', 'Ricetta — Ramipril 5 mg', 'Ramipril 5 mg, 1 compressa al mattino. Confezione da 28 compresse.', 2],
+      ['REFERTO_VISITA', 'Referto valutazione posturale', 'Valutazione posturale: lieve antiversione del bacino, ipomobilità del rachide cervicale. Indicata rieducazione posturale, 8 sedute.', 6],
+      ['ISTRUZIONI', 'Esercizi per il tratto cervicale', 'Tre esercizi quotidiani, 10 ripetizioni ciascuno, mattina e sera. Interrompere in caso di dolore acuto.', 6],
+    ];
+    for (const [kind, title, content, gg] of emessi) {
+      const doc = await db.issuedDocument.create({
+        data: {
+          doctorId: doctor.id,
+          patientId: patient.id,
+          kind,
+          title,
+          content: JSON.stringify({ testo: content }),
+          sentAt: giorniFa(gg),
+          createdAt: giorniFa(gg),
+        },
+      });
+      await db.timelineEvent.create({
+        data: {
+          patientId: patient.id,
+          type: 'DOCUMENTO_EMESSO',
+          date: giorniFa(gg),
+          title,
+          summary: content.slice(0, 120),
+          refType: 'IssuedDocument',
+          refId: doc.id,
+        },
+      });
+    }
+
     console.log(`  ${created} appuntamenti demo su ${patientIds.length} pazienti`);
   }
 

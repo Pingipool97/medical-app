@@ -21,6 +21,13 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Zoom bloccato: su telefono il pizzico per ingrandire scompone il calendario e le
+  // barre fisse, e iOS non torna mai alla scala iniziale. L'alternativa accessibile
+  // resta dentro l'app: il selettore A A A regola il testo fino al 125% senza toccare
+  // l'impaginazione (src/app/globals.css, attributo data-fontsize).
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
   themeColor: '#1e104a',
 };
 

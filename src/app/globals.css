@@ -24,6 +24,13 @@ body {
 /* Focus visibile ovunque, per navigazione da tastiera */
 *:focus-visible { @apply outline-none ring-2 ring-brand-600 ring-offset-1 rounded-sm; }
 
+/* Su iOS un campo con testo sotto i 16px fa ingrandire la pagina appena lo si tocca,
+   e non la riporta più indietro. Sui dispositivi a tocco si impone la soglia: è la
+   causa vera dello zoom involontario, non il pizzico. */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: max(16px, 1em); }
+}
+
 @layer components {
   .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
   .btn-primary { @apply btn bg-gradient-to-b from-brand-700 to-brand-900 text-white hover:from-brand-800 hover:to-brand-950 shadow-sm; }

@@ -31,6 +31,7 @@ const PATHS: Record<string, React.ReactNode> = {
   check: <path d="M4 12.5 10 18 20 6" />,
   x: <path d="M6 6l12 12M18 6 6 18" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+  crown: <path d="M4 18h16M4 18l-1.2-9L8 12l4-7 4 7 5.2-3-1.2 9" />,
   download: <path d="M12 4v11M8 11l4 4 4-4M4 19h16" />,
   flask: <path d="M10 3h4M10 3v6l-6 10a2 2 0 0 0 1.8 3h12.4a2 2 0 0 0 1.8-3L14 9V3M7.5 15h9" />,
   cpu: <path d="M7 7h10v10H7V7zM10 10h4v4h-4v-4zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />,

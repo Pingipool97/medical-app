@@ -26,13 +26,12 @@ export default async function AgendaPage() {
   if (!session || session.role !== 'DOCTOR' || !session.doctorId) redirect('/login');
   const doctorId = session.doctorId;
 
-  // Prestazioni e pazienti hanno un colore stabile: senza, l'agenda è un muro monocromo.
-  await Promise.all([ensureServiceColors(doctorId), ensurePatientColors(doctorId)]);
-
   const today = todayKey();
-  // Finestra ampia: il calendario naviga lato client senza tornare al server.
+  // Finestra volutamente stretta: un mese indietro e due avanti. È quanto serve per
+  // navigare senza tornare al server, ma non tanto da spedire al browser mezzo anno di
+  // appuntamenti — con un'agenda piena diventerebbero migliaia di record a ogni apertura.
   const from = fromZoned(startOfMonth(shiftMonthKey(today, -1)), '00:00');
-  const to = fromZoned(startOfMonth(shiftMonthKey(today, 3)), '00:00');
+  const to = fromZoned(startOfMonth(shiftMonthKey(today, 2)), '00:00');
 
   const [appts, links, avails, exceptions, services] = await Promise.all([
     db.appointment.findMany({
@@ -42,6 +41,8 @@ export default async function AgendaPage() {
         service: { select: { id: true, name: true, color: true } },
       },
       orderBy: { startsAt: 'asc' },
+      // Tetto di sicurezza: un'agenda anomala non deve poter bloccare la pagina.
+      take: 2000,
     }),
     db.doctorPatientLink.findMany({
       where: { doctorId, status: 'ACTIVE' },
@@ -55,6 +56,10 @@ export default async function AgendaPage() {
     }),
     db.serviceCatalog.findMany({ where: { doctorId }, orderBy: { name: 'asc' } }),
   ]);
+
+  // I colori mancanti si assegnano qui, sulle righe già caricate: nessuna query in più
+  // quando sono già tutti a posto, cioè praticamente sempre.
+  await Promise.all([ensureServiceColors(services), ensurePatientColors(links)]);
 
   const colorByPatient = new Map(links.map((l) => [l.patientId, l.color]));
 

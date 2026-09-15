@@ -7,49 +7,45 @@ import { PATIENT_COLORS, autoPatientColor } from './constants';
 // ogni suo export diventa un endpoint raggiungibile dal client, e una funzione che
 // accetta un doctorId e scrive sul DB non deve essere chiamabile da fuori.
 
-/**
- * Assegna un colore alle prestazioni che non ne hanno ancora uno. È la modalità di
- * colorazione predefinita dell'agenda, quindi va popolata prima di disegnare.
- */
-export async function ensureServiceColors(doctorId: string): Promise<void> {
-  const missing = await db.serviceCatalog.count({ where: { doctorId, color: null } });
-  if (missing === 0) return;
+type Colorable = { id: string; color: string | null };
 
-  const services = await db.serviceCatalog.findMany({
-    where: { doctorId },
-    select: { id: true, name: true, color: true },
-    orderBy: { name: 'asc' },
-  });
-  const used = new Set(services.map((s) => s.color).filter(Boolean) as string[]);
-  for (const svc of services) {
-    if (svc.color) continue;
-    const next = PATIENT_COLORS.filter((c) => c.key !== 'slate').find((c) => !used.has(c.key))?.key ?? autoPatientColor(svc.id);
+const PALETTE = PATIENT_COLORS.filter((c) => c.key !== 'slate').map((c) => c.key);
+
+/**
+ * Assegna un colore a ciò che non ne ha ancora uno, preferendo tinte non ancora usate.
+ *
+ * Prende in ingresso le righe **già caricate** dalla pagina invece di rileggerle: con il
+ * database a ~200 ms di distanza, due `count` fatti solo per chiedere "manca qualcosa?"
+ * costavano quasi mezzo secondo a ogni apertura dell'agenda, quasi sempre per sentirsi
+ * rispondere di no. Se sono tutti colorati non parte nessuna query.
+ */
+async function assignColors(rows: Colorable[], write: (id: string, color: string) => Promise<unknown>): Promise<void> {
+  const missing = rows.filter((r) => !r.color);
+  if (missing.length === 0) return;
+
+  const used = new Set(rows.map((r) => r.color).filter(Boolean) as string[]);
+  const updates: Promise<unknown>[] = [];
+  for (const row of missing) {
+    // Prima un colore ancora libero; esauriti quelli, uno derivato dall'id — stabile,
+    // così la stessa riga non cambia tinta a ogni ricarica.
+    const next = PALETTE.find((c) => !used.has(c)) ?? autoPatientColor(row.id);
     used.add(next);
-    await db.serviceCatalog.update({ where: { id: svc.id }, data: { color: next } });
+    row.color = next; // la pagina usa l'oggetto subito, senza rileggere
+    updates.push(write(row.id, next));
   }
+  await Promise.all(updates);
 }
 
-/**
- * Assegna un colore ai collegamenti medico-paziente che non ne hanno ancora uno,
- * preferendo tinte non ancora usate da quel professionista. Idempotente: se sono già
- * tutti colorati non tocca il database.
- */
-export async function ensurePatientColors(doctorId: string): Promise<void> {
-  const missing = await db.doctorPatientLink.count({ where: { doctorId, status: 'ACTIVE', color: null } });
-  if (missing === 0) return;
+/** Colori delle prestazioni: è la modalità di colorazione predefinita del calendario. */
+export function ensureServiceColors(services: Colorable[]): Promise<void> {
+  return assignColors(services, (id, color) =>
+    db.serviceCatalog.update({ where: { id }, data: { color } }),
+  );
+}
 
-  const links = await db.doctorPatientLink.findMany({
-    where: { doctorId, status: 'ACTIVE' },
-    select: { id: true, patientId: true, color: true },
-    orderBy: { createdAt: 'asc' },
-  });
-  const used = new Set(links.map((l) => l.color).filter(Boolean) as string[]);
-  for (const l of links) {
-    if (l.color) continue;
-    // Prima un colore ancora libero; esauriti quelli, uno derivato dall'id — stabile,
-    // così lo stesso paziente non cambia tinta a ogni ricarica.
-    const next = PATIENT_COLORS.filter((c) => c.key !== 'slate').find((c) => !used.has(c.key))?.key ?? autoPatientColor(l.patientId);
-    used.add(next);
-    await db.doctorPatientLink.update({ where: { id: l.id }, data: { color: next } });
-  }
+/** Colori con cui il professionista distingue i pazienti in agenda. */
+export function ensurePatientColors(links: Colorable[]): Promise<void> {
+  return assignColors(links, (id, color) =>
+    db.doctorPatientLink.update({ where: { id }, data: { color } }),
+  );
 }

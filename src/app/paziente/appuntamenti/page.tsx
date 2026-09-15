@@ -18,9 +18,10 @@ export default async function AppuntamentiPage() {
 
   const now = new Date();
   const today = todayKey();
-  // Finestra del calendario: un mese indietro, tre in avanti. Il client naviga da solo.
+  // Finestra volutamente stretta: un mese indietro e due avanti. Oltre, il browser
+  // riceverebbe più dati di quanti ne mostri.
   const calFrom = fromZoned(startOfMonth(shiftMonthKey(today, -1)), '00:00');
-  const calTo = fromZoned(startOfMonth(shiftMonthKey(today, 3)), '00:00');
+  const calTo = fromZoned(startOfMonth(shiftMonthKey(today, 2)), '00:00');
 
   const [upcoming, past, links, waitlist, calAppts] = await Promise.all([
     db.appointment.findMany({

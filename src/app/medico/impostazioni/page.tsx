@@ -1,8 +1,11 @@
+import { fmtOrdine } from '@/lib/format';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { Badge, Card, PageTitle, statusBadgeColor } from '@/components/ui';
 import { ProfileForm, AddOfficeForm, RemoveOfficeButton, AddSpecializationForm, RemoveSpecializationButton } from './forms';
+import { NotificationPrefs } from '@/components/notification-prefs';
+import { loadNotificationPrefs } from '@/lib/notif-prefs';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +33,7 @@ export default async function ImpostazioniPage() {
 
   const ownedIds = new Set(doctor.specializations.map((s) => s.specializationId));
   const addable = allSpecs.filter((s) => !ownedIds.has(s.id)).map((s) => ({ value: s.id, label: s.name }));
+  const notifPrefs = await loadNotificationPrefs(session.userId, session.role);
 
   return (
     <div className="space-y-5">
@@ -41,10 +45,17 @@ export default async function ImpostazioniPage() {
             {VERIFICATION_LABEL[doctor.verificationStatus] ?? doctor.verificationStatus}
           </Badge>
           <span className="text-slate-600">
-            Iscrizione Ordine: {doctor.ordineNumber} ({doctor.ordineProvince})
+            {fmtOrdine(doctor.ordineNumber, doctor.ordineProvince) ?? 'Professione senza albo'}
             {doctor.structureName ? ` · ${doctor.structureName}` : ''}
           </span>
         </div>
+      </Card>
+
+      <Card title="Notifiche">
+        <p className="text-sm text-slate-600 mb-3">
+          Scegli su quali canali vuoi essere avvisato. Le notifiche in app restano sempre attive.
+        </p>
+        <NotificationPrefs rows={notifPrefs} />
       </Card>
 
       <Card title="Profilo">

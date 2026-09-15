@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { Alert, Card, EmergencyBanner, PageTitle } from '@/components/ui';
+import { PremiumGate } from '@/components/premium-gate';
+import { getPlanState } from '@/lib/subscription';
 import { AssistantChat } from './chat';
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +11,7 @@ export const dynamic = 'force-dynamic';
 export default async function AssistentePage() {
   const session = await getSession();
   if (!session?.patientId) redirect('/login');
+  const plan = await getPlanState(session.userId);
 
   return (
     <div className="space-y-5 max-w-3xl">
@@ -36,9 +39,16 @@ export default async function AssistentePage() {
         </Alert>
       </div>
 
-      <Card>
-        <AssistantChat />
-      </Card>
+      {plan.isPremium ? (
+        <Card>
+          <AssistantChat />
+        </Card>
+      ) : (
+        <PremiumGate
+          title="L’assistente è incluso nel piano Premium"
+          description="Con Premium puoi chiedere all’assistente cosa significano i termini dei tuoi referti, quante volte vuoi."
+        />
+      )}
 
       <EmergencyBanner />
     </div>

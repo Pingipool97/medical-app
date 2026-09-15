@@ -3,7 +3,7 @@
 
 export const SAMPLE_VARS: Record<string, string> = {
   nome: 'Mario Rossi',
-  link: 'https://cartella-intelligente.example/accedi',
+  link: 'https://habitus-app.example/accedi',
   titolo: 'Referto visita cardiologica',
   data: '15/09/2026',
   ora: '10:30',

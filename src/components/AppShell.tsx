@@ -2,32 +2,36 @@ import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { unreadCount } from '@/lib/notify';
 import { redirect } from 'next/navigation';
-import { LogoutButton, FontSizeToggle } from './shell-client';
+import { LogoutButton, FontSizeToggle, NavLinks, BottomNav } from './shell-client';
+import { Logo } from './logo';
 import { Icon } from './icons';
 
 // Shell applicativa con navigazione distinta per ruolo: due esperienze davvero diverse,
 // non la stessa schermata con pulsanti nascosti. Su mobile: barra inferiore.
+// Sidebar chiara: il wordmark HABITUS è navy scuro e su fondo scuro sparirebbe.
 
 const NAV: Record<string, { href: string; label: string; icon: string }[]> = {
   PATIENT: [
     { href: '/paziente', label: 'Home', icon: 'home' },
+    { href: '/paziente/appuntamenti', label: 'Appuntamenti', icon: 'calendar' },
     { href: '/paziente/timeline', label: 'Timeline', icon: 'activity' },
     { href: '/paziente/documenti', label: 'Documenti', icon: 'file' },
     { href: '/paziente/diario', label: 'Diario', icon: 'book' },
     { href: '/paziente/richieste', label: 'Richieste', icon: 'inbox' },
     { href: '/paziente/messaggi', label: 'Messaggi', icon: 'message' },
-    { href: '/paziente/appuntamenti', label: 'Appuntamenti', icon: 'calendar' },
     { href: '/paziente/medici', label: 'I miei medici', icon: 'stethoscope' },
     { href: '/paziente/assistente', label: 'Assistente', icon: 'help' },
+    { href: '/paziente/abbonamento', label: 'Abbonamento', icon: 'sparkles' },
     { href: '/paziente/accessi', label: 'Chi ha visto i miei dati', icon: 'shield' },
     { href: '/paziente/impostazioni', label: 'Impostazioni', icon: 'settings' },
   ],
   DOCTOR: [
     { href: '/medico', label: 'Home', icon: 'home' },
+    { href: '/medico/agenda', label: 'Agenda', icon: 'calendar' },
     { href: '/medico/pazienti', label: 'Pazienti', icon: 'users' },
     { href: '/medico/richieste', label: 'Richieste', icon: 'inbox' },
     { href: '/medico/messaggi', label: 'Messaggi', icon: 'message' },
-    { href: '/medico/agenda', label: 'Agenda', icon: 'calendar' },
+    { href: '/medico/whatsapp', label: 'WhatsApp', icon: 'message' },
     { href: '/medico/bozze-ia', label: 'Bozze IA', icon: 'sparkles' },
     { href: '/medico/impostazioni', label: 'Impostazioni', icon: 'settings' },
   ],
@@ -35,6 +39,7 @@ const NAV: Record<string, { href: string; label: string; icon: string }[]> = {
     { href: '/admin', label: 'Dashboard', icon: 'chart' },
     { href: '/admin/provider', label: 'Provider e chiavi', icon: 'key' },
     { href: '/admin/ia', label: 'Configurazione IA', icon: 'cpu' },
+    { href: '/admin/abbonamenti', label: 'Abbonamenti', icon: 'sparkles' },
     { href: '/admin/prompt', label: 'Prompt di sistema', icon: 'pencil' },
     { href: '/admin/template', label: 'Template', icon: 'mail' },
     { href: '/admin/notifiche', label: 'Eventi e canali', icon: 'bell' },
@@ -55,12 +60,12 @@ function DevRoleSwitcher({ current }: { current: string }) {
   if (process.env.DEV_LOGIN !== 'true') return null;
   const roles: [string, string][] = [['PATIENT', 'Paziente'], ['DOCTOR', 'Medico'], ['ADMIN', 'Admin']];
   return (
-    <div className="px-5 py-3 border-t border-white/10">
-      <p className="text-[10px] uppercase tracking-wide text-brand-300 mb-1.5">Vista (solo sviluppo)</p>
+    <div className="px-5 py-3 border-t border-slate-200 bg-amber-50/60">
+      <p className="text-[10px] uppercase tracking-wide text-amber-700 mb-1.5 font-semibold">Vista (solo sviluppo)</p>
       <div className="flex gap-1.5">
         {roles.map(([role, label]) => (
           <a key={role} href={`/api/dev-login?role=${role}`}
-            className={`text-xs px-2 py-1 rounded ${current === role ? 'bg-white text-brand-900 font-semibold' : 'bg-white/10 text-brand-100 hover:bg-white/20'}`}>
+            className={`text-xs px-2 py-1 rounded ${current === role ? 'bg-brand-700 text-white font-semibold' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
             {label}
           </a>
         ))}
@@ -80,35 +85,35 @@ export default async function AppShell({ role, children }: { role: string; child
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Sidebar desktop */}
-      <aside className="hidden lg:flex lg:flex-col w-64 shrink-0 bg-brand-950 text-white min-h-screen sticky top-0 max-h-screen">
-        <div className="px-5 py-5 border-b border-white/10">
-          <Link href={nav[0]?.href ?? '/'} className="font-bold text-lg">Cartella Intelligente</Link>
-          <p className="text-xs text-brand-200 mt-1 truncate">{session.displayName}</p>
+      <aside className="hidden lg:flex lg:flex-col w-64 shrink-0 bg-gradient-to-b from-white via-white to-brand-50 border-r border-slate-200 min-h-screen sticky top-0 max-h-screen">
+        <div className="px-5 py-4 border-b border-slate-200 surface-brand">
+          <Link href={nav[0]?.href ?? '/'} className="block" aria-label="HABITUS — home">
+            <Logo variant="full" className="h-9 w-auto" priority />
+          </Link>
+          <p className="text-xs text-slate-500 mt-2 truncate">{session.displayName}</p>
         </div>
-        <nav className="flex-1 overflow-y-auto py-3" aria-label="Navigazione principale">
-          {nav.map((item) => (
-            <Link key={item.href} href={item.href} className="flex items-center gap-3 px-5 py-2.5 text-sm text-brand-100 hover:bg-white/10 hover:text-white">
-              <Icon name={item.icon} className="w-[18px] h-[18px] shrink-0 opacity-80" /> {item.label}
-            </Link>
-          ))}
+        <nav className="flex-1 overflow-y-auto py-3 space-y-0.5" aria-label="Navigazione principale">
+          <NavLinks items={nav} />
         </nav>
         <DevRoleSwitcher current={role} />
-        <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-2">
+        <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-between gap-2">
           <FontSizeToggle />
           <LogoutButton />
         </div>
       </aside>
 
       {/* Header mobile */}
-      <header className="lg:hidden sticky top-0 z-20 bg-brand-950 text-white px-4 py-3 flex items-center justify-between">
-        <Link href={nav[0]?.href ?? '/'} className="font-bold">Cartella Intelligente</Link>
-        <div className="flex items-center gap-4">
+      <header className="lg:hidden sticky top-0 z-20 surface-brand border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
+        <Link href={nav[0]?.href ?? '/'} aria-label="HABITUS — home">
+          <Logo variant="full" className="h-7 w-auto" priority />
+        </Link>
+        <div className="flex items-center gap-4 text-slate-600">
           {devMode && (
-            <a href={`/api/dev-login?role=${role === 'PATIENT' ? 'DOCTOR' : 'PATIENT'}`} className="text-xs underline text-brand-200">
+            <a href={`/api/dev-login?role=${role === 'PATIENT' ? 'DOCTOR' : 'PATIENT'}`} className="text-xs underline text-amber-700">
               {role === 'PATIENT' ? 'Vista medico' : 'Vista paziente'}
             </a>
           )}
-          <Link href={notifHref} aria-label="Notifiche" className="relative">
+          <Link href={notifHref} aria-label="Notifiche" className="relative hover:text-brand-800">
             <Icon name="bell" className="w-5 h-5" />
             {unread > 0 && <span className="absolute -top-1.5 -right-2 bg-red-600 text-white text-[10px] rounded-full px-1.5">{unread}</span>}
           </Link>
@@ -119,14 +124,7 @@ export default async function AppShell({ role, children }: { role: string; child
       <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8 pb-24 lg:pb-8 max-w-6xl w-full mx-auto">{children}</main>
 
       {/* Bottom nav mobile (prime 5 voci) */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-slate-200 flex" aria-label="Navigazione rapida">
-        {nav.slice(0, 5).map((item) => (
-          <Link key={item.href} href={item.href} className="flex-1 flex flex-col items-center gap-0.5 py-2 text-[11px] text-slate-600 hover:text-brand-700">
-            <Icon name={item.icon} className="w-5 h-5" />
-            {item.label}
-          </Link>
-        ))}
-      </nav>
+      <BottomNav items={nav.slice(0, 5)} />
     </div>
   );
 }

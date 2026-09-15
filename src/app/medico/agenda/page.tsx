@@ -1,177 +1,171 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { fmtDate, fmtEuro } from '@/lib/format';
-import { APPOINTMENT_STATUS_LABEL } from '@/lib/constants';
-import { Badge, Card, EmptyState, PageTitle, statusBadgeColor } from '@/components/ui';
-import { Icon } from '@/components/icons';
-import {
-  BriefingButton, CompleteWithNotesForm, CancelAppointmentButton,
-  AvailabilityForm, DeleteAvailabilityButton, ExceptionForm,
-  CreateServiceForm, EditServiceForm, ToggleServiceButton,
+import { db } from '@/lib/db';
+import { ensurePatientColors, ensureServiceColors } from '@/lib/agenda';
+import { dateKey, minutesOfDay, todayKey, fromZoned, shiftMonthKey, startOfMonth } from '@/lib/datetime';
+import { fmtDate } from '@/lib/format';
+
+import { Card, PageTitle, EmptyState, Badge } from '@/components/ui';
+import type { CalEvent } from '@/components/calendar';
+import AgendaClient, {
+  AvailabilityForm,
+  DeleteAvailabilityButton,
+  ExceptionForm,
+  DeleteExceptionButton,
+  CreateServiceForm,
+  EditServiceForm,
+  ToggleServiceButton,
 } from './agenda-client';
 
 export const dynamic = 'force-dynamic';
 
 const WEEKDAY_LABEL = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-const MODE_LABEL: Record<string, string> = { PRESENZA: 'Solo in presenza', VIDEO: 'Solo videoconsulto', ENTRAMBI: 'Presenza o video' };
 
 export default async function AgendaPage() {
   const session = await getSession();
-  if (!session?.doctorId) redirect('/login');
+  if (!session || session.role !== 'DOCTOR' || !session.doctorId) redirect('/login');
   const doctorId = session.doctorId;
 
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start.getTime() + 14 * 86400_000);
+  // Prestazioni e pazienti hanno un colore stabile: senza, l'agenda è un muro monocromo.
+  await Promise.all([ensureServiceColors(doctorId), ensurePatientColors(doctorId)]);
 
-  const [appointments, availabilities, exceptions, services] = await Promise.all([
+  const today = todayKey();
+  // Finestra ampia: il calendario naviga lato client senza tornare al server.
+  const from = fromZoned(startOfMonth(shiftMonthKey(today, -1)), '00:00');
+  const to = fromZoned(startOfMonth(shiftMonthKey(today, 3)), '00:00');
+
+  const [appts, links, avails, exceptions, services] = await Promise.all([
     db.appointment.findMany({
-      where: { doctorId, startsAt: { gte: start, lt: end } },
+      where: { doctorId, startsAt: { gte: from, lt: to } },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true } },
+        service: { select: { id: true, name: true, color: true } },
+      },
       orderBy: { startsAt: 'asc' },
-      include: { patient: true, service: true },
+    }),
+    db.doctorPatientLink.findMany({
+      where: { doctorId, status: 'ACTIVE' },
+      include: { patient: { select: { id: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: 'asc' },
     }),
     db.availability.findMany({ where: { doctorId }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] }),
-    db.availabilityException.findMany({ where: { doctorId, date: { gte: start } }, orderBy: { date: 'asc' } }),
+    db.availabilityException.findMany({
+      where: { doctorId, date: { gte: fromZoned(today, '00:00') } },
+      orderBy: { date: 'asc' },
+    }),
     db.serviceCatalog.findMany({ where: { doctorId }, orderBy: { name: 'asc' } }),
   ]);
 
-  // Raggruppa per giorno
-  const byDay = new Map<string, typeof appointments>();
-  for (const a of appointments) {
-    const key = a.startsAt.toISOString().slice(0, 10);
-    byDay.set(key, [...(byDay.get(key) ?? []), a]);
-  }
-  const days = Array.from(byDay.entries()).sort(([a], [b]) => a.localeCompare(b));
+  const colorByPatient = new Map(links.map((l) => [l.patientId, l.color]));
+
+  // Il fuso si risolve qui, una volta sola: il client riceve giorno e minuti già pronti.
+  const events: CalEvent[] = appts.map((a) => ({
+    id: a.id,
+    day: dateKey(a.startsAt),
+    startMin: minutesOfDay(a.startsAt),
+    endMin: minutesOfDay(a.endsAt) || 24 * 60,
+    title: `${a.patient.lastName} ${a.patient.firstName}`,
+    subtitle: [a.service?.name, a.mode === 'VIDEO' ? 'Video' : null].filter(Boolean).join(' · ') || undefined,
+    colors: { service: a.service?.color ?? null, patient: colorByPatient.get(a.patientId) ?? null },
+    status: a.status,
+    href: `/medico/pazienti/${a.patientId}`,
+    mode: a.mode,
+  }));
+
+  const patients = links.map((l) => ({
+    id: l.patientId,
+    name: `${l.patient.lastName} ${l.patient.firstName}`,
+    color: l.color ?? 'indigo',
+  }));
+
+  const upcoming = appts
+    .filter((a) => a.startsAt.getTime() >= Date.now() && (a.status === 'PRENOTATO' || a.status === 'CONFERMATO'))
+    .slice(0, 5);
 
   return (
-    <div className="space-y-5">
-      <PageTitle title="Agenda" subtitle="I prossimi 14 giorni, la gestione delle disponibilità e il catalogo delle prestazioni." />
+    <>
+      <PageTitle title="Agenda" subtitle="Calendario appuntamenti, disponibilità e prestazioni." />
 
-      <Card title="Appuntamenti (prossimi 14 giorni)">
-        {days.length === 0 ? (
-          <EmptyState title="Nessun appuntamento in agenda" hint="I pazienti collegati possono prenotare in base alle tue disponibilità." />
-        ) : (
-          <div className="space-y-5">
-            {days.map(([day, appts]) => (
-              <div key={day}>
-                <h3 className="text-sm font-bold text-slate-800 border-b border-slate-200 pb-1 mb-2 capitalize">
-                  {new Date(day + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: '2-digit', month: 'long' })}
-                </h3>
-                <ul className="space-y-3">
-                  {appts.map((a) => {
-                    let motivo: string | null = null;
-                    try { motivo = a.questionnaire ? (JSON.parse(a.questionnaire).motivo ?? null) : null; } catch { motivo = null; }
-                    const active = a.status === 'PRENOTATO' || a.status === 'CONFERMATO';
-                    return (
-                      <li key={a.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">
-                              {a.startsAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                              {' – '}
-                              {a.endsAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                              {' · '}
-                              <Link href={`/medico/pazienti/${a.patientId}`} className="text-brand-700 hover:underline">
-                                {a.patient.firstName} {a.patient.lastName}
-                              </Link>
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {a.service?.name ?? 'Visita'} · {a.mode === 'VIDEO' ? 'Videoconsulto' : 'In presenza'}
-                            </p>
-                          </div>
-                          <Badge color={statusBadgeColor(a.status)}>{APPOINTMENT_STATUS_LABEL[a.status] ?? a.status}</Badge>
-                        </div>
+      <div className="space-y-4">
+        <AgendaClient
+          events={events}
+          today={today}
+          patients={patients}
+          services={services.filter((s) => s.active).map((s) => ({ id: s.id, name: s.name, durationMin: s.durationMin, mode: s.mode, color: s.color ?? 'indigo' }))}
+          upcoming={upcoming.map((a) => ({
+            id: a.id,
+            status: a.status,
+            when: `${fmtDate(a.startsAt)} · ${String(Math.floor(minutesOfDay(a.startsAt) / 60)).padStart(2, '0')}:${String(minutesOfDay(a.startsAt) % 60).padStart(2, '0')}`,
+            patient: `${a.patient.lastName} ${a.patient.firstName}`,
+            patientId: a.patientId,
+            service: a.service?.name ?? null,
+            notes: a.doctorNotes ?? '',
+          }))}
+        />
 
-                        {motivo && (
-                          <p className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">
-                            <span className="font-medium">Questionario pre-visita:</span> {motivo}
-                          </p>
-                        )}
-                        {a.doctorNotes && (
-                          <p className="text-sm text-slate-700 bg-emerald-50 rounded-lg px-3 py-2">
-                            <span className="font-medium">Note visita:</span> {a.doctorNotes}
-                          </p>
-                        )}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card title="Disponibilità settimanali">
+            {avails.length === 0 ? (
+              <EmptyState title="Nessuna fascia impostata" hint="Senza disponibilità i pazienti non possono prenotare online." />
+            ) : (
+              <ul className="divide-y divide-slate-100 mb-4">
+                {avails.map((a) => (
+                  <li key={a.id} className="py-2 flex items-center justify-between text-sm">
+                    <span>
+                      <span className="font-medium">{WEEKDAY_LABEL[a.weekday]}</span>{' '}
+                      <span className="text-slate-600 tabular-nums">{a.startTime}–{a.endTime}</span>
+                    </span>
+                    <DeleteAvailabilityButton id={a.id} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <AvailabilityForm />
+          </Card>
 
-                        <div className="flex items-start gap-2 flex-wrap">
-                          {active && <BriefingButton appointmentId={a.id} />}
-                          {active && <CompleteWithNotesForm appointmentId={a.id} defaultNotes={a.doctorNotes ?? ''} />}
-                          {(a.status === 'COMPLETATO' || a.doctorNotes) && (
-                            <Link
-                              href={`/medico/pazienti/${a.patientId}/emetti?kind=REFERTO_VISITA&title=${encodeURIComponent(`Referto visita del ${fmtDate(a.startsAt)}`)}&body=${encodeURIComponent(a.doctorNotes ?? '')}`}
-                              className="btn-secondary !py-1.5 text-xs inline-flex items-center gap-1.5"
-                            >
-                              <Icon name="pencil" className="w-4 h-4" /> Genera referto dalle note
-                            </Link>
-                          )}
-                          {active && <CancelAppointmentButton appointmentId={a.id} />}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+          <Card title="Chiusure ed eccezioni">
+            {exceptions.length === 0 ? (
+              <p className="text-sm text-slate-500 mb-4">Nessuna chiusura programmata.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100 mb-4">
+                {exceptions.map((e) => (
+                  <li key={e.id} className="py-2 flex items-center justify-between text-sm">
+                    <span>
+                      <span className="font-medium">{fmtDate(e.date)}</span>
+                      {e.reason && <span className="text-slate-600"> — {e.reason}</span>}
+                    </span>
+                    <DeleteExceptionButton id={e.id} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <ExceptionForm />
+          </Card>
+        </div>
 
-      <Card title="Disponibilità settimanali">
-        {availabilities.length === 0 ? (
-          <p className="text-sm text-slate-500 mb-3">Nessuna fascia configurata: i pazienti non vedono slot prenotabili.</p>
-        ) : (
-          <ul className="divide-y divide-slate-100 mb-4">
-            {availabilities.map((av) => (
-              <li key={av.id} className="py-2 flex items-center justify-between gap-2 text-sm">
-                <span>{WEEKDAY_LABEL[av.weekday]} · {av.startTime}–{av.endTime}</span>
-                <DeleteAvailabilityButton id={av.id} />
-              </li>
-            ))}
-          </ul>
-        )}
-        <AvailabilityForm />
-      </Card>
-
-      <Card title="Chiusure ed eccezioni (ferie, congressi…)">
-        {exceptions.length === 0 ? (
-          <p className="text-sm text-slate-500 mb-3">Nessuna chiusura futura registrata.</p>
-        ) : (
-          <ul className="divide-y divide-slate-100 mb-4">
-            {exceptions.map((ex) => (
-              <li key={ex.id} className="py-2 text-sm">
-                {fmtDate(ex.date)}{ex.reason ? ` — ${ex.reason}` : ''}
-              </li>
-            ))}
-          </ul>
-        )}
-        <ExceptionForm />
-      </Card>
-
-      <Card title="Catalogo prestazioni">
-        {services.length === 0 ? (
-          <p className="text-sm text-slate-500 mb-3">Nessuna prestazione: aggiungine una per rendere prenotabile l’agenda.</p>
-        ) : (
-          <ul className="divide-y divide-slate-100 mb-4">
-            {services.map((s) => (
-              <li key={s.id} className="py-2.5 space-y-1">
-                <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
-                  <span className={s.active ? '' : 'text-slate-400 line-through'}>
-                    <strong>{s.name}</strong> · {s.durationMin} min · {fmtEuro(s.priceCents)} · {MODE_LABEL[s.mode] ?? s.mode}
-                  </span>
-                  <span className="flex items-center gap-3">
+        <Card title="Catalogo prestazioni">
+          {services.length === 0 ? (
+            <EmptyState title="Nessuna prestazione" hint="Servono per far prenotare i pazienti e per calcolare la durata degli appuntamenti." />
+          ) : (
+            <ul className="divide-y divide-slate-100 mb-4">
+              {services.map((s) => (
+                <li key={s.id} className="py-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm">
+                    <span className="font-medium">{s.name}</span>
+                    <span className="text-slate-600"> · {s.durationMin} min · {(s.priceCents / 100).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>
                     {!s.active && <Badge color="gray">Disattivata</Badge>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <EditServiceForm service={{ id: s.id, name: s.name, durationMin: s.durationMin, priceCents: s.priceCents, mode: s.mode }} />
                     <ToggleServiceButton id={s.id} active={s.active} />
-                  </span>
-                </div>
-                <EditServiceForm service={{ id: s.id, name: s.name, durationMin: s.durationMin, priceCents: s.priceCents, mode: s.mode, active: s.active }} />
-              </li>
-            ))}
-          </ul>
-        )}
-        <CreateServiceForm />
-      </Card>
-    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <CreateServiceForm />
+        </Card>
+      </div>
+    </>
   );
 }

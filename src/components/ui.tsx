@@ -52,14 +52,26 @@ export function Field({ label, name, type = 'text', required, defaultValue, plac
   );
 }
 
-export function SelectField({ label, name, options, required, defaultValue, hint }: {
+// Resta non controllato per default (tutti i form esistenti lo usano così); passando
+// `value` + `onChange` diventa controllato, per i form che reagiscono alla scelta.
+export function SelectField({ label, name, options, required, defaultValue, hint, value, onChange, placeholder = 'Seleziona…' }: {
   label: string; name: string; options: { value: string; label: string }[]; required?: boolean; defaultValue?: string; hint?: string;
+  value?: string; onChange?: (value: string) => void; placeholder?: string;
 }) {
+  const controlled = value !== undefined;
   return (
     <div>
       <label className="label" htmlFor={name}>{label}{required && <span className="text-red-600" aria-hidden> *</span>}</label>
-      <select id={name} name={name} required={required} defaultValue={defaultValue ?? ''} className="input">
-        <option value="" disabled>Seleziona…</option>
+      <select
+        id={name}
+        name={name}
+        required={required}
+        className="input"
+        {...(controlled
+          ? { value, onChange: (e: React.ChangeEvent<HTMLSelectElement>) => onChange?.(e.target.value) }
+          : { defaultValue: defaultValue ?? '' })}
+      >
+        <option value="" disabled>{placeholder}</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
       {hint && <p className="text-xs text-slate-500 mt-1">{hint}</p>}

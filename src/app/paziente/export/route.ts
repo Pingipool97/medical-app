@@ -54,7 +54,7 @@ export async function GET() {
 
   const payload = {
     esportatoIl: new Date().toISOString(),
-    nota: 'Copia completa dei tuoi dati registrati su Cartella Intelligente. I file dei documenti si scaricano singolarmente dalla sezione Documenti.',
+    nota: 'Copia completa dei tuoi dati registrati su HABITUS APP. I file dei documenti si scaricano singolarmente dalla sezione Documenti.',
     profilo: {
       ...profileRest,
       codiceFiscale: decryptField(codiceFiscaleEnc),

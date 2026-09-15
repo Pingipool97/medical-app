@@ -1,6 +1,7 @@
 // Costruzione condivisa dei filtri audit: usata dalla pagina e dalla route di export CSV,
 // così l'export applica esattamente gli stessi filtri della vista.
 import type { Prisma } from '@prisma/client';
+import { fromZoned, shiftDateKey } from '@/lib/datetime';
 
 export type AuditFilters = {
   azione?: string;
@@ -20,11 +21,11 @@ export function buildAuditWhere(f: AuditFilters): Prisma.AuditLogWhereInput {
 
   const createdAt: Prisma.DateTimeFilter = {};
   if (f.da) {
-    const d = new Date(`${f.da}T00:00:00`);
+    const d = fromZoned(f.da, '00:00');
     if (!Number.isNaN(d.getTime())) createdAt.gte = d;
   }
   if (f.a) {
-    const d = new Date(`${f.a}T23:59:59.999`);
+    const d = new Date(fromZoned(shiftDateKey(f.a, 1), '00:00').getTime() - 1);
     if (!Number.isNaN(d.getTime())) createdAt.lte = d;
   }
   if (createdAt.gte || createdAt.lte) where.createdAt = createdAt;

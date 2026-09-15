@@ -1,31 +1,19 @@
-import { copyFileSync, existsSync } from 'fs';
-import path from 'path';
 import { PrismaClient } from '@prisma/client';
 
-// Demo su Vercel: il filesystem è in sola lettura tranne /tmp, ma l'app scrive sul DB
-// anche solo per fare login (lastLoginAt, tentativi falliti). Il file `prisma/dev.db`
-// viaggia nel repo e viene copiato in /tmp alla prima query dell'istanza serverless.
-// Conseguenza voluta: i dati inseriti online vivono quanto l'istanza, poi si torna al seed.
-// In locale non cambia nulla: si continua a usare DATABASE_URL dal .env.
-const TMP_DB = '/tmp/dev.db';
-
-function resolveDatabaseUrl(): string | undefined {
-  if (!process.env.VERCEL) return undefined; // locale: decide DATABASE_URL
-  if (!existsSync(TMP_DB)) {
-    copyFileSync(path.join(process.cwd(), 'prisma', 'dev.db'), TMP_DB);
-  }
-  return `file:${TMP_DB}`;
-}
-
-const datasourceUrl = resolveDatabaseUrl();
+// Client Prisma verso PostgreSQL (Supabase).
+//
+// Il singleton è attivo anche in produzione, non solo in sviluppo: su serverless ogni
+// modulo che importasse questo file aprirebbe altrimenti una connessione nuova, e il
+// pooler di Supabase (15 connessioni sul piano Nano) si esaurirebbe in fretta.
+// L'URL runtime punta al pooler in transaction mode; le migration usano DIRECT_URL,
+// letto direttamente da Prisma CLI tramite `directUrl` nello schema.
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    ...(datasourceUrl ? { datasourceUrl } : {}),
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db;
+globalForPrisma.prisma = db;

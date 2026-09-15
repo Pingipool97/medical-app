@@ -173,14 +173,16 @@ export async function registerPatientAction(_prev: ActionState, formData: FormDa
 
 // ── Registrazione medico ──
 
+// I campi Ordine sono facoltativi nello schema: se servano davvero dipende dalla
+// professione scelta, e lo si sa solo dopo averla letta dal DB (vedi sotto).
 const doctorSchema = z.object({
   firstName: z.string().min(2, 'Nome troppo corto'),
   lastName: z.string().min(2, 'Cognome troppo corto'),
   email: z.string().email('Email non valida'),
   password: z.string().min(10, 'La password deve avere almeno 10 caratteri').regex(/[A-Z]/, 'Serve almeno una maiuscola').regex(/[0-9]/, 'Serve almeno un numero'),
-  ordineNumber: z.string().min(3, 'Numero di iscrizione all’Ordine obbligatorio'),
-  ordineProvince: z.string().min(2, 'Provincia dell’Ordine obbligatoria'),
-  specialization: z.string().min(1, 'Indica almeno una specializzazione'),
+  ordineNumber: z.string().optional(),
+  ordineProvince: z.string().optional(),
+  specialization: z.string().min(1, 'Indica la tua professione o specializzazione'),
   vatNumber: z.string().optional(),
   structureName: z.string().optional(),
 });
@@ -200,6 +202,16 @@ export async function registerDoctorAction(_prev: ActionState, formData: FormDat
   if (await db.user.findUnique({ where: { email } })) return { error: 'Esiste già un account con questa email.' };
 
   const spec = await db.specialization.findUnique({ where: { code: d.specialization } });
+  if (!spec || !spec.active) return { error: 'Professione non valida: selezionane una dall’elenco.' };
+
+  // Gate vero sull'obbligo di albo: il client nasconde i campi, ma la decisione è qui.
+  const ordineNumber = d.ordineNumber?.trim() || '';
+  const ordineProvince = d.ordineProvince?.trim().toUpperCase() || '';
+  if (spec.requiresOrdine) {
+    if (ordineNumber.length < 3) return { error: 'Numero di iscrizione all’Ordine obbligatorio per questa professione.' };
+    if (!/^[A-Z]{2}$/.test(ordineProvince)) return { error: 'Provincia dell’Ordine obbligatoria (sigla di 2 lettere).' };
+  }
+
   const { ip } = clientInfo();
   const user = await db.user.create({
     data: {
@@ -211,12 +223,13 @@ export async function registerDoctorAction(_prev: ActionState, formData: FormDat
         create: {
           firstName: d.firstName.trim(),
           lastName: d.lastName.trim(),
-          ordineNumber: d.ordineNumber.trim(),
-          ordineProvince: d.ordineProvince.trim().toUpperCase(),
+          // Per le professioni senza albo restano null: non è un dato mancante, non esiste.
+          ordineNumber: spec.requiresOrdine ? ordineNumber : null,
+          ordineProvince: spec.requiresOrdine ? ordineProvince : null,
           vatNumber: d.vatNumber?.trim() || null,
           structureName: d.structureName?.trim() || null,
           verificationStatus: 'PENDING', // nessuna emissione finché l'admin non verifica l'identità professionale
-          ...(spec ? { specializations: { create: { specializationId: spec.id } } } : {}),
+          specializations: { create: { specializationId: spec.id } },
         },
       },
     },

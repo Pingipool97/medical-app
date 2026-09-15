@@ -1,14 +1,19 @@
 // Piattaforma sanitaria — modello dati completo.
-// SQLite in sviluppo; il provider è sostituibile con PostgreSQL senza modifiche al codice applicativo.
-// SQLite non supporta gli enum Prisma: gli stati sono String con costanti applicative in src/lib/constants.ts.
+// PostgreSQL su Supabase. Gli stati restano String con costanti applicative in
+// src/lib/constants.ts (scelta ereditata da SQLite, mantenuta: cambiare un valore
+// non richiede una migration e l'insieme dei valori è già validato lato applicativo).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
+  // Pooler in transaction mode (6543): regge le connessioni effimere del serverless.
+  url       = env("DATABASE_URL")
+  // Le migration hanno bisogno di una sessione vera (5432): il transaction pooler
+  // non supporta i prepared statement e gli statement DDL di lunga durata.
+  directUrl = env("DIRECT_URL")
 }
 
 // ─────────────────────────── Utenti e ruoli ───────────────────────────
@@ -34,22 +39,24 @@ model User {
   patientProfile PatientProfile?
   doctorProfile  DoctorProfile?
   staffProfile   StaffProfile?
+  subscription   Subscription?
+  notifPrefs     NotificationPreference[]
   notifications  Notification[]
   consents       ConsentRecord[]
-  auditEvents    AuditLog[]      @relation("actor")
-  delegations    CaregiverDelegation[] @relation("caregiverUser")
+  auditEvents    AuditLog[]               @relation("actor")
+  delegations    CaregiverDelegation[]    @relation("caregiverUser")
 }
 
 model PatientProfile {
-  id                  String    @id @default(cuid())
-  userId              String    @unique
-  user                User      @relation(fields: [userId], references: [id])
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id])
   firstName           String
   lastName            String
   birthDate           DateTime
   biologicalSex       String // M | F
   codiceFiscaleEnc    String // cifrato
-  codiceFiscaleHash   String    @unique // per lookup/deduplica
+  codiceFiscaleHash   String   @unique // per lookup/deduplica
   addressStreet       String?
   addressCity         String?
   addressProvince     String?
@@ -60,30 +67,30 @@ model PatientProfile {
   healthCardEnc       String? // tessera sanitaria
   asl                 String?
   insurance           String?
-  onboardingStep      Int       @default(0)
-  profileCompleteness Int       @default(0) // 0-100, parametro di affidabilità mostrato accanto alle analisi IA
+  onboardingStep      Int      @default(0)
+  profileCompleteness Int      @default(0) // 0-100, parametro di affidabilità mostrato accanto alle analisi IA
 
-  conditions     Condition[]
-  allergies      Allergy[]
-  medications    Medication[]
-  surgeries      Surgery[]
-  vaccinations   Vaccination[]
-  familyHistory  FamilyHistory[]
-  lifestyle      Lifestyle?
-  vitals         VitalMeasurement[]
-  pregnancy      PregnancyStatus?
-  documents      Document[]
-  labResults     LabResult[]
-  timeline       TimelineEvent[]
-  links          DoctorPatientLink[]
-  requests       ServiceRequest[]
-  conversations  Conversation[]
-  appointments   Appointment[]
-  issuedDocs     IssuedDocument[]
-  aiJobs         AiJob[]
-  delegations    CaregiverDelegation[]
-  waitlist       WaitlistEntry[]
-  problems       ClinicalProblem[]
+  conditions    Condition[]
+  allergies     Allergy[]
+  medications   Medication[]
+  surgeries     Surgery[]
+  vaccinations  Vaccination[]
+  familyHistory FamilyHistory[]
+  lifestyle     Lifestyle?
+  vitals        VitalMeasurement[]
+  pregnancy     PregnancyStatus?
+  documents     Document[]
+  labResults    LabResult[]
+  timeline      TimelineEvent[]
+  links         DoctorPatientLink[]
+  requests      ServiceRequest[]
+  conversations Conversation[]
+  appointments  Appointment[]
+  issuedDocs    IssuedDocument[]
+  aiJobs        AiJob[]
+  delegations   CaregiverDelegation[]
+  waitlist      WaitlistEntry[]
+  problems      ClinicalProblem[]
 }
 
 model DoctorProfile {
@@ -92,8 +99,9 @@ model DoctorProfile {
   user               User      @relation(fields: [userId], references: [id])
   firstName          String
   lastName           String
-  ordineNumber       String
-  ordineProvince     String
+  // Nullable: valorizzati solo per le professioni con albo (Specialization.requiresOrdine).
+  ordineNumber       String?
+  ordineProvince     String?
   vatNumber          String?
   structureName      String?
   offices            String? // JSON [{name, address, city}]
@@ -104,19 +112,22 @@ model DoctorProfile {
   verifiedByUserId   String?
   verificationNote   String?
   responseTimeHours  Int       @default(48) // tempo di risposta dichiarato, mostrato al paziente
+  // L'IA per il professionista è inclusa: si monetizza nel prezzo di vendita dell'app,
+  // non con un abbonamento in-app. Resta un interruttore per casi particolari.
+  aiIncluded         Boolean   @default(true)
 
-  specializations DoctorSpecialization[]
-  links           DoctorPatientLink[]
-  requests        ServiceRequest[]
-  conversations   Conversation[]
-  appointments    Appointment[]
-  availabilities  Availability[]
+  specializations        DoctorSpecialization[]
+  links                  DoctorPatientLink[]
+  requests               ServiceRequest[]
+  conversations          Conversation[]
+  appointments           Appointment[]
+  availabilities         Availability[]
   availabilityExceptions AvailabilityException[]
-  services        ServiceCatalog[]
-  issuedDocs      IssuedDocument[]
-  staff           StaffProfile[]
-  staffDelegations StaffDelegation[]
-  waitlist        WaitlistEntry[]
+  services               ServiceCatalog[]
+  issuedDocs             IssuedDocument[]
+  staff                  StaffProfile[]
+  staffDelegations       StaffDelegation[]
+  waitlist               WaitlistEntry[]
 }
 
 model DoctorSpecialization {
@@ -143,16 +154,16 @@ model StaffProfile {
 
 // Delega clinica esplicita e temporizzata alla segreteria (mai default)
 model StaffDelegation {
-  id          String        @id @default(cuid())
-  staffId     String
-  staff       StaffProfile  @relation(fields: [staffId], references: [id])
-  doctorId    String
-  doctor      DoctorProfile @relation(fields: [doctorId], references: [id])
-  patientId   String? // null = delega generale non clinica; valorizzato = accesso clinico a quel paziente
-  scope       String // AGENDA | ANAGRAFICA | CLINICO
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime      @default(now())
+  id        String        @id @default(cuid())
+  staffId   String
+  staff     StaffProfile  @relation(fields: [staffId], references: [id])
+  doctorId  String
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id])
+  patientId String? // null = delega generale non clinica; valorizzato = accesso clinico a quel paziente
+  scope     String // AGENDA | ANAGRAFICA | CLINICO
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime      @default(now())
 }
 
 model CaregiverDelegation {
@@ -177,6 +188,10 @@ model DoctorPatientLink {
   patient     PatientProfile @relation(fields: [patientId], references: [id])
   status      String         @default("PENDING") // PENDING | ACTIVE | REVOKED | ENDED
   requestedBy String // PATIENT | DOCTOR
+  // Colore con cui il professionista distingue questo paziente in agenda. Sta qui e non
+  // su PatientProfile perché è una scelta del singolo medico: due medici possono dare
+  // colori diversi allo stesso paziente, e il paziente non deve vederla.
+  color       String? // chiave della palette in src/lib/constants.ts
   acceptedAt  DateTime?
   revokedAt   DateTime?
   revokedBy   String?
@@ -293,16 +308,16 @@ model PregnancyStatus {
 // ─────────────────────────── Documentale ───────────────────────────
 
 model Document {
-  id                 String         @id @default(cuid())
+  id                 String           @id @default(cuid())
   patientId          String
-  patient            PatientProfile @relation(fields: [patientId], references: [id])
+  patient            PatientProfile   @relation(fields: [patientId], references: [id])
   uploadedByUserId   String
   uploadedByRole     String
   title              String
   docTypeCode        String // FK logica su DocumentTypeDef.code
   specializationCode String?
   docDate            DateTime?
-  dateConfirmed      Boolean        @default(false) // la data estratta va confermata
+  dateConfirmed      Boolean          @default(false) // la data estratta va confermata
   issuer             String? // struttura/medico emittente
   notes              String?
   fileName           String
@@ -310,50 +325,50 @@ model Document {
   mimeType           String
   fileSize           Int
   sha256             String // deduplica
-  status             String         @default("UPLOADED") // UPLOADED | PROCESSING | PROCESSED | FAILED | QUARANTINED | NEEDS_REVIEW
+  status             String           @default("UPLOADED") // UPLOADED | PROCESSING | PROCESSED | FAILED | QUARANTINED | NEEDS_REVIEW
   quarantineReason   String? // es. CF nel documento non coerente con l'intestatario del profilo
   extractedText      String?
   extractionQuality  String? // COMPLETA | PARZIALE | ILLEGGIBILE
   extractedData      String? // JSON: {diagnosi[], terapie[], esamiConsigliati[], followUp[], dataEstratta}
   ocrConfidence      Float?
   duplicateOfId      String?
-  thirdPartyFound    Boolean        @default(false)
-  thirdPartyRedacted Boolean        @default(false)
+  thirdPartyFound    Boolean          @default(false)
+  thirdPartyRedacted Boolean          @default(false)
   problemId          String?
   problem            ClinicalProblem? @relation(fields: [problemId], references: [id])
   // Visibilità per-medico ("condivisione per scope, default privato")
   sharedWith         DocumentShare[]
   labResults         LabResult[]
   jobs               ProcessingJob[]
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
 }
 
 model DocumentShare {
-  id         String   @id @default(cuid())
-  documentId String
-  document   Document @relation(fields: [documentId], references: [id])
-  doctorId   String
-  sharedAt   DateTime @default(now())
-  revokedAt  DateTime?
+  id                 String    @id @default(cuid())
+  documentId         String
+  document           Document  @relation(fields: [documentId], references: [id])
+  doctorId           String
+  sharedAt           DateTime  @default(now())
+  revokedAt          DateTime?
   // Copia giuridica del medico: sopravvive alla revoca e alla cancellazione account (obbligo di conservazione)
-  doctorCopyRetained Boolean @default(true)
+  doctorCopyRetained Boolean   @default(true)
 
   @@unique([documentId, doctorId])
 }
 
 model ProcessingJob {
-  id         String   @id @default(cuid())
-  documentId String
-  document   Document @relation(fields: [documentId], references: [id])
-  status     String   @default("QUEUED") // QUEUED | RUNNING | DONE | FAILED
-  attempts   Int      @default(0)
-  maxAttempts Int     @default(3)
-  lastError  String?
-  stepsLog   String? // JSON: [{step, ok, detail, at}] visibile all'utente — l'upload non muore mai in silenzio
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id])
+  status      String   @default("QUEUED") // QUEUED | RUNNING | DONE | FAILED
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(3)
+  lastError   String?
+  stepsLog    String? // JSON: [{step, ok, detail, at}] visibile all'utente — l'upload non muore mai in silenzio
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model LabAnalyte {
@@ -404,20 +419,20 @@ model ClinicalProblem {
 }
 
 model TimelineEvent {
-  id        String         @id @default(cuid())
-  patientId String
-  patient   PatientProfile @relation(fields: [patientId], references: [id])
-  type      String // DOCUMENTO | MISURAZIONE | APPUNTAMENTO | DOCUMENTO_EMESSO | TERAPIA | NOTA
-  date      DateTime
-  title     String
-  summary   String?
-  refType   String?
-  refId     String?
-  flags     String? // JSON: {outOfRange, urgent, unconfirmed}
+  id                 String           @id @default(cuid())
+  patientId          String
+  patient            PatientProfile   @relation(fields: [patientId], references: [id])
+  type               String // DOCUMENTO | MISURAZIONE | APPUNTAMENTO | DOCUMENTO_EMESSO | TERAPIA | NOTA
+  date               DateTime
+  title              String
+  summary            String?
+  refType            String?
+  refId              String?
+  flags              String? // JSON: {outOfRange, urgent, unconfirmed}
   specializationCode String?
-  problemId String?
-  problem   ClinicalProblem? @relation(fields: [problemId], references: [id])
-  createdAt DateTime       @default(now())
+  problemId          String?
+  problem            ClinicalProblem? @relation(fields: [problemId], references: [id])
+  createdAt          DateTime         @default(now())
 
   @@index([patientId, date])
 }
@@ -470,32 +485,32 @@ model AiJob {
 
 // Stato "bozza IA → revisionata dal medico → pubblicata". Le bozze scadono, mai auto-pubblicazione.
 model AiOutput {
-  id                String    @id @default(cuid())
-  jobId             String
-  job               AiJob     @relation(fields: [jobId], references: [id])
-  audience          String // DOCTOR | PATIENT
-  state             String    @default("DRAFT") // DRAFT | REVIEWED | PUBLISHED | REJECTED | EXPIRED
-  contentDraft      String
-  contentFinal      String?
-  sources           String? // JSON: [{documentId, titolo, estratto}] — ogni affermazione ancorata alla fonte
-  coverageNote      String? // dichiarazione di copertura (profilo completo al X%, N farmaci noti)
-  insufficientData  Boolean   @default(false) // "non ho elementi sufficienti" esplicito
-  reviewedByUserId  String?
-  reviewedAt        DateTime?
-  publishedAt       DateTime?
-  expiresAt         DateTime?
-  createdAt         DateTime  @default(now())
+  id               String    @id @default(cuid())
+  jobId            String
+  job              AiJob     @relation(fields: [jobId], references: [id])
+  audience         String // DOCTOR | PATIENT
+  state            String    @default("DRAFT") // DRAFT | REVIEWED | PUBLISHED | REJECTED | EXPIRED
+  contentDraft     String
+  contentFinal     String?
+  sources          String? // JSON: [{documentId, titolo, estratto}] — ogni affermazione ancorata alla fonte
+  coverageNote     String? // dichiarazione di copertura (profilo completo al X%, N farmaci noti)
+  insufficientData Boolean   @default(false) // "non ho elementi sufficienti" esplicito
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  publishedAt      DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
 }
 
 model AiChatMessage {
-  id        String   @id @default(cuid())
-  patientId String
+  id           String   @id @default(cuid())
+  patientId    String
   doctorUserId String
-  role      String // user | assistant
-  content   String
-  sources   String? // JSON
-  jobId     String?
-  createdAt DateTime @default(now())
+  role         String // user | assistant
+  content      String
+  sources      String? // JSON
+  jobId        String?
+  createdAt    DateTime @default(now())
 
   @@index([patientId, doctorUserId])
 }
@@ -617,6 +632,9 @@ model ServiceCatalog {
   priceCents  Int           @default(0)
   mode        String        @default("ENTRAMBI") // PRESENZA | VIDEO | ENTRAMBI
   active      Boolean       @default(true)
+  // Colore in agenda. È la modalità predefinita: con molti pazienti il colore per
+  // persona si ripete e non dice più nulla, il tipo di prestazione sì.
+  color       String? // chiave della palette in src/lib/constants.ts
 
   appointments Appointment[]
   waitlist     WaitlistEntry[]
@@ -659,10 +677,15 @@ model Appointment {
   videoRoomId    String? // valorizzato solo se provider video configurato
   questionnaire  String? // JSON questionario pre-visita
   doctorNotes    String? // note del medico durante la visita → base per il referto post-visita
+  // Promemoria già inviato: il job periodico deve essere idempotente, altrimenti a ogni
+  // passata rimanda lo stesso avviso.
+  reminderSentAt DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
   @@index([doctorId, startsAt])
+  @@index([patientId, startsAt])
+  @@index([startsAt, status])
 }
 
 model WaitlistEntry {
@@ -734,11 +757,73 @@ model DrugContraindication {
   @@index([substance])
 }
 
+// ─────────────────────────── Abbonamenti ───────────────────────────
+
+// Piano dell'utente. Oggi riguarda solo il paziente: PREMIUM sblocca le funzioni IA
+// (assistente e spiegazioni). Il professionista ha l'IA inclusa via DoctorProfile.aiIncluded.
+// Nessun incasso automatico finché non è integrato un provider di pagamento: l'attivazione
+// è manuale da admin e lo stato è comunque modellato per reggere rinnovi e scadenze.
+model Subscription {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id])
+  plan        String    @default("FREE") // FREE | PREMIUM
+  status      String    @default("ACTIVE") // ACTIVE | EXPIRED | CANCELLED | PENDING_PAYMENT
+  priceCents  Int       @default(899) // 8,99 € / anno
+  currency    String    @default("EUR")
+  startedAt   DateTime  @default(now())
+  expiresAt   DateTime? // null = nessuna scadenza (piano FREE)
+  cancelledAt DateTime?
+  autoRenew   Boolean   @default(false)
+  activatedBy String? // ADMIN | PAYMENT
+  externalRef String? // id transazione del provider di pagamento, quando ci sarà
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  events SubscriptionEvent[]
+}
+
+// Storico degli stati: non si sovrascrive mai un abbonamento senza lasciare traccia.
+model SubscriptionEvent {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  kind           String // CREATED | ACTIVATED | RENEWED | EXPIRED | CANCELLED | REACTIVATED
+  note           String?
+  actorUserId    String?
+  createdAt      DateTime     @default(now())
+
+  @@index([subscriptionId, createdAt])
+}
+
+// ─────────────────────────── Preferenze notifica ───────────────────────────
+
+// Scelta del singolo utente, dentro il perimetro deciso da NotificationRule (che resta
+// la policy globale della piattaforma). In-app non è disattivabile: è il registro di
+// ciò che è successo sull'account. Assenza di riga = default della regola globale.
+model NotificationPreference {
+  id            String  @id @default(cuid())
+  userId        String
+  user          User    @relation(fields: [userId], references: [id])
+  eventKey      String
+  email         Boolean @default(true)
+  sms           Boolean @default(false)
+  push          Boolean @default(true)
+  reminderHours Int? // solo per appuntamento_promemoria: quante ore prima avvisare
+
+  @@unique([userId, eventKey])
+}
+
 model Specialization {
-  id     String  @id @default(cuid())
-  code   String  @unique
-  name   String
-  active Boolean @default(true)
+  id             String  @id @default(cuid())
+  code           String  @unique
+  name           String
+  active         Boolean @default(true)
+  // Non tutte le professioni sanitarie hanno un albo: chinesiologo clinico,
+  // massofisioterapista e massaggiatore non sono iscritti a un Ordine. Quando è false
+  // i campi ordine non vengono nemmeno mostrati in registrazione (e non sono richiesti
+  // dalla validazione server).
+  requiresOrdine Boolean @default(true)
 
   doctors DoctorSpecialization[]
 }

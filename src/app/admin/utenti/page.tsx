@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { fmtDateTime } from '@/lib/format';
+import { fmtDateTime , fmtOrdine } from '@/lib/format';
 import { Card, Badge, PageTitle, EmptyState } from '@/components/ui';
 import { UserStatusButton, VerifyDoctorForm } from './forms';
 import type { Prisma } from '@prisma/client';
@@ -79,7 +79,11 @@ export default async function UtentiPage({ searchParams }: { searchParams?: SP }
                 <div key={d.id} className="border border-slate-200 rounded-lg p-4 grid gap-4 lg:grid-cols-2">
                   <div className="text-sm space-y-1">
                     <p className="font-semibold text-slate-900">Dr. {d.firstName} {d.lastName}</p>
-                    <p className="text-slate-600">Ordine dei Medici di <strong>{d.ordineProvince}</strong> — iscrizione n. <strong>{d.ordineNumber}</strong></p>
+                    <p className="text-slate-600">
+                      {fmtOrdine(d.ordineNumber, d.ordineProvince) ?? (
+                        <span className="italic">Professione senza obbligo di iscrizione a un Ordine — verifica la qualifica con altra documentazione.</span>
+                      )}
+                    </p>
                     <p className="text-slate-600">
                       Specializzazioni: {d.specializations.length > 0 ? d.specializations.map((s) => s.specialization.name).join(', ') : '—'}
                     </p>

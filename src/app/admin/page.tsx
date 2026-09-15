@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { getSetting } from '@/lib/settings';
-import { fmtEuro, fmtDateTime } from '@/lib/format';
+import { fmtEuro, fmtDateTime , fmtOrdine } from '@/lib/format';
 import { Card, Badge, PageTitle, Alert, EmptyState } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -120,7 +120,9 @@ export default async function AdminDashboard() {
                 <li key={d.id} className="py-2 text-sm flex flex-wrap items-center justify-between gap-2">
                   <span>
                     <span className="font-medium">{d.firstName} {d.lastName}</span>{' '}
-                    <span className="text-slate-500">— Ordine {d.ordineProvince} n. {d.ordineNumber}</span>
+                    <span className="text-slate-500">
+                      {fmtOrdine(d.ordineNumber, d.ordineProvince) ?? 'Professione senza albo'}
+                    </span>
                   </span>
                   <span className="text-slate-500">{d.user.email}</span>
                 </li>

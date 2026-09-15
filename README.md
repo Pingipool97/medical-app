@@ -1,4 +1,4 @@
-# Cartella Intelligente — Piattaforma sanitaria medico ↔ paziente
+# HABITUS APP — piattaforma fisio e benessere, medico ↔ paziente
 
 Web app che mette in comunicazione medici e pazienti attorno alla documentazione clinica:
 il paziente carica i referti, il sistema li legge e li struttura in una timeline sanitaria,

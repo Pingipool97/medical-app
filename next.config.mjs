@@ -2,11 +2,6 @@
 const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['pdf-parse', 'bcryptjs'],
-    // Il DB della demo non è raggiunto da import statici: senza questo Vercel
-    // non lo impacchetta nella funzione serverless e a runtime non esiste.
-    outputFileTracingIncludes: {
-      '/**/*': ['./prisma/dev.db'],
-    },
   },
   headers: async () => [
     {

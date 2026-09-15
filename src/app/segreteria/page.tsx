@@ -2,9 +2,11 @@ import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { fmtDate } from '@/lib/format';
-import { APPOINTMENT_STATUS_LABEL } from '@/lib/constants';
+import { APPOINTMENT_STATUS_LABEL, STATUS_COLOR } from '@/lib/constants';
+import { dateKey, minutesOfDay, todayKey, fromZoned, shiftMonthKey, startOfMonth } from '@/lib/datetime';
 import { Alert, Badge, Card, EmptyState, PageTitle, statusBadgeColor } from '@/components/ui';
-import { StaffCancelButton } from './cancel-button';
+import type { CalEvent } from '@/components/calendar';
+import { StaffCancelButton, StaffCalendar } from './cancel-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,9 +26,9 @@ export default async function SegreteriaPage() {
   });
   if (!staff) redirect('/login');
 
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start.getTime() + 14 * 86400_000);
+  const today = todayKey();
+  const start = fromZoned(startOfMonth(shiftMonthKey(today, -1)), '00:00');
+  const end = fromZoned(startOfMonth(shiftMonthKey(today, 3)), '00:00');
 
   // SOLO dati di agenda: nome paziente, prestazione, orario. Nessun dato clinico.
   const [appointments, delegations] = await Promise.all([
@@ -40,7 +42,7 @@ export default async function SegreteriaPage() {
         mode: true,
         status: true,
         patient: { select: { firstName: true, lastName: true } },
-        service: { select: { name: true } },
+        service: { select: { name: true, color: true } },
       },
     }),
     db.staffDelegation.findMany({
@@ -58,6 +60,26 @@ export default async function SegreteriaPage() {
       })
     : [];
   const patientName = new Map(delegatedPatients.map((p) => [p.id, `${p.firstName} ${p.lastName}`]));
+
+  // Stesso calendario delle altre viste, ma senza dato clinico: nome, prestazione, orario.
+  const events: CalEvent[] = appointments.map((a) => ({
+    id: a.id,
+    day: dateKey(a.startsAt),
+    startMin: minutesOfDay(a.startsAt),
+    endMin: minutesOfDay(a.endsAt) || 24 * 60,
+    title: `${a.patient.lastName} ${a.patient.firstName}`,
+    subtitle: [a.service?.name, a.mode === 'VIDEO' ? 'Video' : null].filter(Boolean).join(' · ') || undefined,
+    colors: { service: a.service?.color ?? null },
+    status: a.status,
+  }));
+  const legends = {
+    service: [...new Map(appointments.filter((a) => a.service?.color).map((a) => [a.service!.color!, a.service!.name])).entries()]
+      .map(([key, label]) => ({ key, label })),
+    status: [...new Set(appointments.map((a) => a.status))].map((st) => ({
+      key: STATUS_COLOR[st] ?? 'slate',
+      label: APPOINTMENT_STATUS_LABEL[st] ?? st,
+    })),
+  };
 
   // Raggruppa per giorno
   const byDay = new Map<string, typeof appointments>();
@@ -79,7 +101,9 @@ export default async function SegreteriaPage() {
         <strong>L’accesso ai contenuti clinici richiede delega esplicita del medico.</strong>
       </Alert>
 
-      <Card title="Appuntamenti (prossimi 14 giorni)">
+      <StaffCalendar events={events} today={today} legends={legends} />
+
+      <Card title="Prossimi appuntamenti">
         {days.length === 0 ? (
           <EmptyState title="Nessun appuntamento in agenda" />
         ) : (

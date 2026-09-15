@@ -144,7 +144,7 @@ export function generateTotpSecret(): string {
 }
 
 export function totpUri(email: string, secretPlain: string): string {
-  return authenticator.keyuri(email, 'Cartella Intelligente', secretPlain);
+  return authenticator.keyuri(email, 'HABITUS APP', secretPlain);
 }
 
 export function verifyTotp(secretEnc: string, code: string): boolean {

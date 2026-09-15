@@ -5,6 +5,8 @@ import { decryptField } from '@/lib/crypto';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { Alert, Badge, Card, PageTitle } from '@/components/ui';
 import { ProfileForm, RevokeConsentButton } from './forms';
+import { NotificationPrefs } from '@/components/notification-prefs';
+import { loadNotificationPrefs } from '@/lib/notif-prefs';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,12 +31,21 @@ export default async function ImpostazioniPage() {
   ]);
   if (!profile) redirect('/login');
 
+  const notifPrefs = await loadNotificationPrefs(session.userId, session.role);
+
   return (
     <div className="space-y-5 max-w-3xl">
       <PageTitle
         title="Impostazioni"
         subtitle="I tuoi dati, i tuoi consensi e il controllo sulle tue informazioni."
       />
+
+      <Card title="Notifiche">
+        <p className="text-sm text-slate-600 mb-3">
+          Scegli su quali canali vuoi essere avvisato. Le notifiche in app restano sempre attive.
+        </p>
+        <NotificationPrefs rows={notifPrefs} />
+      </Card>
 
       <Card title="Dati del profilo">
         <dl className="grid grid-cols-2 gap-3 text-sm mb-5">

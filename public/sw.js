@@ -4,7 +4,7 @@
 // consultabili offline. I contenuti in cache stanno nel sandbox del browser del
 // dispositivo dell'utente; al logout la cache viene svuotata.
 
-const CACHE = 'cartella-v1';
+const CACHE = 'habitus-v1';
 const OFFLINE_PATHS = ['/paziente', '/paziente/timeline', '/paziente/documenti', '/paziente/diario'];
 
 self.addEventListener('install', (e) => {
@@ -25,7 +25,7 @@ self.addEventListener('fetch', (e) => {
   // Mai cache per API e admin
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin')) return;
 
-  const cacheable = url.pathname.startsWith('/_next/static') || url.pathname.startsWith('/paziente') || OFFLINE_PATHS.includes(url.pathname) || url.pathname === '/icon.svg';
+  const cacheable = url.pathname.startsWith('/_next/static') || url.pathname.startsWith('/paziente') || OFFLINE_PATHS.includes(url.pathname) || url.pathname.startsWith('/icon-') || url.pathname.startsWith('/logo-habitus');
   if (!cacheable) return;
 
   if (url.pathname.startsWith('/_next/static')) {

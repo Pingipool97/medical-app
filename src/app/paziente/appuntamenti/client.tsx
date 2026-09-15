@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { cancelAppointmentAction, joinWaitlistAction, type ActionState } from '@/app/actions/agenda';
 import { Alert } from '@/components/ui';
+import Calendar, { type CalEvent } from '@/components/calendar';
 
 export function CancelAppointmentForm({ appointmentId }: { appointmentId: string }) {
   const [open, setOpen] = useState(false);
@@ -84,5 +85,30 @@ export function JoinWaitlistForm({ doctors }: {
       </button>
       {state?.error && <Alert kind="error">{state.error}</Alert>}
     </div>
+  );
+}
+
+/**
+ * Calendario del paziente: stessa griglia del professionista, ma in sola lettura.
+ * Il paziente non sposta né crea appuntamenti — passa dalla prenotazione, che rispetta
+ * le disponibilità del medico.
+ */
+export function PatientCalendar({
+  events,
+  today,
+  legend,
+}: {
+  events: CalEvent[];
+  today: string;
+  legend: { key: string; label: string }[];
+}) {
+  return (
+    <Calendar
+      events={events}
+      today={today}
+      initialView="month"
+      legends={{ service: legend }}
+      emptyHint="Nessun appuntamento in questo periodo."
+    />
   );
 }

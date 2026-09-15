@@ -3,9 +3,11 @@ import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { fmtDate, fmtDateTime } from '@/lib/format';
-import { APPOINTMENT_STATUS_LABEL } from '@/lib/constants';
+import { APPOINTMENT_STATUS_LABEL, autoPatientColor } from '@/lib/constants';
+import { dateKey, minutesOfDay, todayKey, fromZoned, shiftMonthKey, startOfMonth } from '@/lib/datetime';
 import { Badge, Card, EmptyState, PageTitle, statusBadgeColor } from '@/components/ui';
-import { CancelAppointmentForm, JoinWaitlistForm } from './client';
+import type { CalEvent } from '@/components/calendar';
+import { CancelAppointmentForm, JoinWaitlistForm, PatientCalendar } from './client';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +17,12 @@ export default async function AppuntamentiPage() {
   const patientId = session.patientId;
 
   const now = new Date();
-  const [upcoming, past, links, waitlist] = await Promise.all([
+  const today = todayKey();
+  // Finestra del calendario: un mese indietro, tre in avanti. Il client naviga da solo.
+  const calFrom = fromZoned(startOfMonth(shiftMonthKey(today, -1)), '00:00');
+  const calTo = fromZoned(startOfMonth(shiftMonthKey(today, 3)), '00:00');
+
+  const [upcoming, past, links, waitlist, calAppts] = await Promise.all([
     db.appointment.findMany({
       where: { patientId, startsAt: { gte: now } },
       orderBy: { startsAt: 'asc' },
@@ -36,7 +43,30 @@ export default async function AppuntamentiPage() {
       include: { doctor: true, service: true },
       orderBy: { createdAt: 'desc' },
     }),
+    db.appointment.findMany({
+      where: { patientId, startsAt: { gte: calFrom, lt: calTo } },
+      include: { doctor: { select: { id: true, firstName: true, lastName: true } }, service: { select: { name: true } } },
+      orderBy: { startsAt: 'asc' },
+    }),
   ]);
+
+  // Lato paziente il colore distingue i professionisti (non i pazienti): deriva
+  // dall'id del medico, quindi resta stabile senza bisogno di salvarlo.
+  const events: CalEvent[] = calAppts.map((a) => ({
+    id: a.id,
+    day: dateKey(a.startsAt),
+    startMin: minutesOfDay(a.startsAt),
+    endMin: minutesOfDay(a.endsAt) || 24 * 60,
+    title: `${a.doctor.lastName} ${a.doctor.firstName}`,
+    subtitle: [a.service?.name, a.mode === 'VIDEO' ? 'Video' : null].filter(Boolean).join(' · ') || undefined,
+    colors: { service: autoPatientColor(a.doctorId) },
+    status: a.status,
+  }));
+
+  const legend = [...new Map(calAppts.map((a) => [a.doctorId, a])).values()].map((a) => ({
+    key: autoPatientColor(a.doctorId),
+    label: `${a.doctor.lastName} ${a.doctor.firstName}`,
+  }));
 
   return (
     <div className="space-y-5">
@@ -45,6 +75,8 @@ export default async function AppuntamentiPage() {
         subtitle="Prossime visite, storico e lista d'attesa."
         action={<Link href="/paziente/appuntamenti/prenota" className="btn-primary">＋ Prenota una visita</Link>}
       />
+
+      <PatientCalendar events={events} today={today} legend={legend} />
 
       <Card title="Prossimi appuntamenti">
         {upcoming.length === 0 ? (

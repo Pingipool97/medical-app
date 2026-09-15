@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { createCipheriv, createHash, randomBytes } from 'crypto';
 import 'dotenv/config';
+import { fromZoned, shiftDateKey, todayKey } from '../src/lib/datetime';
 
 const db = new PrismaClient();
 
@@ -22,19 +23,31 @@ async function main() {
   console.log('Seed in corso…');
 
   // ── Specializzazioni (gestite da DB, modificabili da admin) ──
-  const specs = [
-    ['cardiologia', 'Cardiologia'], ['ortopedia', 'Ortopedia'], ['dermatologia', 'Dermatologia'],
-    ['ginecologia', 'Ginecologia'], ['oculistica', 'Oculistica'], ['neurologia', 'Neurologia'],
-    ['endocrinologia', 'Endocrinologia'], ['gastroenterologia', 'Gastroenterologia'], ['urologia', 'Urologia'],
-    ['otorinolaringoiatria', 'Otorinolaringoiatria'], ['pneumologia', 'Pneumologia'], ['reumatologia', 'Reumatologia'],
-    ['oncologia', 'Oncologia'], ['psichiatria', 'Psichiatria'], ['odontoiatria', 'Odontoiatria'],
-    ['allergologia', 'Allergologia'], ['nefrologia', 'Nefrologia'], ['ematologia', 'Ematologia'],
-    ['medicina_sport', 'Medicina dello sport'], ['nutrizione', 'Nutrizione'], ['fisiatria', 'Fisiatria'],
-    ['medicina_generale', 'Medicina generale'], ['pediatria', 'Pediatria'], ['chirurgia_generale', 'Chirurgia generale'],
-    ['radiologia', 'Radiologia'], ['angiologia', 'Angiologia'], ['geriatria', 'Geriatria'],
+  // Terzo elemento = richiede iscrizione all'Ordine. Le professioni sanitarie senza albo
+  // (chinesiologo clinico, massofisioterapista, massaggiatore) hanno false: in registrazione
+  // i campi Ordine non compaiono e non sono richiesti dalla validazione.
+  const specs: [string, string, boolean][] = [
+    ['cardiologia', 'Cardiologia', true], ['ortopedia', 'Ortopedia', true], ['dermatologia', 'Dermatologia', true],
+    ['ginecologia', 'Ginecologia', true], ['oculistica', 'Oculistica', true], ['neurologia', 'Neurologia', true],
+    ['endocrinologia', 'Endocrinologia', true], ['gastroenterologia', 'Gastroenterologia', true], ['urologia', 'Urologia', true],
+    ['otorinolaringoiatria', 'Otorinolaringoiatria', true], ['pneumologia', 'Pneumologia', true], ['reumatologia', 'Reumatologia', true],
+    ['oncologia', 'Oncologia', true], ['psichiatria', 'Psichiatria', true], ['odontoiatria', 'Odontoiatria', true],
+    ['allergologia', 'Allergologia', true], ['nefrologia', 'Nefrologia', true], ['ematologia', 'Ematologia', true],
+    ['medicina_sport', 'Medicina dello sport', true], ['nutrizione', 'Nutrizione', true], ['fisiatria', 'Fisiatria', true],
+    ['medicina_generale', 'Medicina generale', true], ['pediatria', 'Pediatria', true], ['chirurgia_generale', 'Chirurgia generale', true],
+    ['radiologia', 'Radiologia', true], ['angiologia', 'Angiologia', true], ['geriatria', 'Geriatria', true],
+    // Professioni senza obbligo di iscrizione a un Ordine
+    ['chinesiologo_clinico', 'Chinesiologo clinico', false],
+    ['massofisioterapista', 'Massofisioterapista', false],
+    ['massofisioterapista_mcb', 'Massofisioterapista (MCB)', false],
+    ['massaggiatore', 'Massaggiatore', false],
   ];
-  for (const [code, name] of specs) {
-    await db.specialization.upsert({ where: { code }, update: {}, create: { code, name } });
+  for (const [code, name, requiresOrdine] of specs) {
+    await db.specialization.upsert({
+      where: { code },
+      update: { name, requiresOrdine },
+      create: { code, name, requiresOrdine },
+    });
   }
 
   // ── Tipi documento ──
@@ -239,15 +252,17 @@ async function main() {
 
   // ── Template comunicazioni (l'email non contiene MAI contenuto clinico) ──
   const templates: [string, string, string | null, string][] = [
-    ['notifica_generica', 'EMAIL', 'Hai una nuova notifica su Cartella Intelligente', 'Gentile {{nome}},\n\nhai una nuova notifica sulla piattaforma: {{titolo}}.\n\nPer leggerla accedi alla tua area riservata: {{link}}\n\nQuesta email non contiene contenuti clinici per proteggere la tua riservatezza.\nCartella Intelligente'],
-    ['notifica_generica', 'SMS', null, 'Cartella Intelligente: {{titolo}}. Accedi per i dettagli: {{link}}'],
-    ['promemoria_appuntamento', 'EMAIL', 'Promemoria appuntamento del {{data}}', 'Gentile {{nome}},\n\nti ricordiamo l’appuntamento con {{medico}} il {{data}} alle {{ora}} ({{modalita}}).\n\nPer disdire o modificare: {{link}}\n\nCartella Intelligente'],
+    ['notifica_generica', 'EMAIL', 'Hai una nuova notifica su HABITUS APP', 'Gentile {{nome}},\n\nhai una nuova notifica sulla piattaforma: {{titolo}}.\n\nPer leggerla accedi alla tua area riservata: {{link}}\n\nQuesta email non contiene contenuti clinici per proteggere la tua riservatezza.\nHABITUS APP'],
+    ['notifica_generica', 'SMS', null, 'HABITUS APP: {{titolo}}. Accedi per i dettagli: {{link}}'],
+    ['promemoria_appuntamento', 'EMAIL', 'Promemoria appuntamento del {{data}}', 'Gentile {{nome}},\n\nti ricordiamo l’appuntamento con {{medico}} il {{data}} alle {{ora}} ({{modalita}}).\n\nPer disdire o modificare: {{link}}\n\nHABITUS APP'],
     ['documento_pdf_intestazione', 'PDF', null, '{{studio}}\n{{medico}} — Iscrizione Ordine {{ordine}}\n{{indirizzo}}'],
   ];
   for (const [key, channel, subject, body] of templates) {
     await db.messageTemplate.upsert({
       where: { key_channel_version: { key, channel, version: 1 } },
-      update: {},
+      // Aggiorna anche i record esistenti: con `update: {}` un cambio di testo (il nome
+      // dell'app, per dire) non arriverebbe mai ai DB già seminati.
+      update: { subject, body },
       create: { key, channel, version: 1, subject, body },
     });
   }
@@ -360,6 +375,91 @@ async function main() {
       await db.availability.create({ data: { doctorId: doctor.id, weekday, startTime: '09:00', endTime: '13:00' } });
       await db.availability.create({ data: { doctorId: doctor.id, weekday, startTime: '14:30', endTime: '18:00' } });
     }
+  }
+
+
+  // Appuntamenti e pazienti dimostrativi, per far vedere il calendario popolato.
+  // Non fanno parte del seed di base: si creano solo con SEED_DEMO=true, così un
+  // ambiente vero non si ritrova dentro persone che non esistono.
+  if (process.env.SEED_DEMO === 'true' && (await db.appointment.count({ where: { doctorId: doctor.id } })) === 0) {
+    const services = await db.serviceCatalog.findMany({ where: { doctorId: doctor.id }, orderBy: { durationMin: 'desc' } });
+
+    const extra = [
+      { first: 'Giulia', last: 'Ferrari', sex: 'F', cf: 'FRRGLI85M41F205Z', birth: '1985-08-01' },
+      { first: 'Luca', last: 'Moretti', sex: 'M', cf: 'MRTLCU78E15F205K', birth: '1978-05-15' },
+      { first: 'Anna', last: 'Conti', sex: 'F', cf: 'CNTNNA92T55F205R', birth: '1992-12-15' },
+    ];
+
+    const patientIds: string[] = [patient.id];
+    for (const p of extra) {
+      const email = `${p.first.toLowerCase()}.${p.last.toLowerCase()}@demo.it`;
+      const u = await db.user.upsert({
+        where: { email },
+        update: {},
+        create: {
+          email,
+          passwordHash: pwd,
+          role: 'PATIENT',
+          emailVerifiedAt: new Date(),
+          patientProfile: {
+            create: {
+              firstName: p.first,
+              lastName: p.last,
+              birthDate: new Date(p.birth + 'T00:00:00Z'),
+              biologicalSex: p.sex,
+              codiceFiscaleEnc: encryptField(p.cf),
+              codiceFiscaleHash: lookupHash(p.cf),
+              addressCity: 'Milano',
+            },
+          },
+        },
+        include: { patientProfile: true },
+      });
+      if (!u.patientProfile) continue;
+      patientIds.push(u.patientProfile.id);
+      await db.doctorPatientLink.upsert({
+        where: { doctorId_patientId: { doctorId: doctor.id, patientId: u.patientProfile.id } },
+        update: {},
+        create: {
+          doctorId: doctor.id,
+          patientId: u.patientProfile.id,
+          status: 'ACTIVE',
+          requestedBy: 'DOCTOR',
+          acceptedAt: new Date(),
+        },
+      });
+    }
+
+    const HOURS = ['09:00', '09:40', '10:30', '11:15', '14:30', '15:30', '16:20', '17:00'];
+    let created = 0;
+    for (let d = 0; d < 14 && created < 26; d++) {
+      const dayISO = shiftDateKey(todayKey(), d);
+      const [yy, mm, dd] = dayISO.split('-').map(Number);
+      const dow = new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay();
+      if (dow === 0 || dow === 6) continue; // niente weekend
+
+      const howMany = 2 + (d % 3);
+      for (let i = 0; i < howMany && created < 26; i++) {
+        const time = HOURS[(d + i * 3) % HOURS.length];
+        const svc = services[(d + i) % Math.max(services.length, 1)];
+        const pid = patientIds[(d + i) % patientIds.length];
+        // fromZoned: l'orario è "da muro" italiano a prescindere dal fuso della macchina
+        const startsAt = fromZoned(dayISO, time);
+        await db.appointment.create({
+          data: {
+            doctorId: doctor.id,
+            patientId: pid,
+            serviceId: svc?.id ?? null,
+            startsAt,
+            endsAt: new Date(startsAt.getTime() + (svc?.durationMin ?? 30) * 60_000),
+            mode: svc?.mode === 'VIDEO' ? 'VIDEO' : 'PRESENZA',
+            status: d === 0 ? 'CONFERMATO' : 'PRENOTATO',
+          },
+        });
+        created++;
+      }
+    }
+    console.log(`  ${created} appuntamenti demo su ${patientIds.length} pazienti`);
   }
 
   console.log('Seed completato.');

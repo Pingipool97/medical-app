@@ -1,17 +1,17 @@
 {
-  "name": "cartella-intelligente",
+  "name": "habitus-app",
   "version": "0.1.0",
   "private": true,
-  "description": "Piattaforma sanitaria digitale medico-paziente con cartella clinica intelligente",
+  "description": "HABITUS APP — piattaforma fisio e benessere: cartella clinica, agenda e assistenza medico-paziente",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:generate": "prisma generate",
-    "setup": "prisma generate && prisma db push && tsx prisma/seed.ts"
+    "setup": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

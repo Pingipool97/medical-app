@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { staffCancelAppointmentAction, type ActionState } from './actions';
+import Calendar, { type CalEvent } from '@/components/calendar';
 
 export function StaffCancelButton({ appointmentId }: { appointmentId: string }) {
   const [pending, start] = useTransition();
@@ -23,5 +24,29 @@ export function StaffCancelButton({ appointmentId }: { appointmentId: string }) 
       </button>
       {state?.error && <span className="text-xs text-red-700 ml-2">{state.error}</span>}
     </span>
+  );
+}
+
+/**
+ * Calendario della segreteria: sola lettura. Spostare un appuntamento resta una
+ * decisione del professionista, la segreteria può solo annullare (azione già esistente).
+ */
+export function StaffCalendar({
+  events,
+  today,
+  legends,
+}: {
+  events: CalEvent[];
+  today: string;
+  legends: { service: { key: string; label: string }[]; status: { key: string; label: string }[] };
+}) {
+  return (
+    <Calendar
+      events={events}
+      today={today}
+      legends={legends}
+      colorModes={['service', 'status']}
+      emptyHint="Nessun appuntamento in questo periodo."
+    />
   );
 }

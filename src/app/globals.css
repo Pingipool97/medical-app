@@ -7,17 +7,32 @@
 :root[data-fontsize='xlarge'] { font-size: 125%; }
 
 html { -webkit-text-size-adjust: 100%; }
-body { @apply bg-slate-50 text-slate-900 antialiased; }
+/* Fondo con la sfumatura del logo: il navy non è mai pieno, si schiarisce verso
+   l'azzurro come le cornici del marchio. È fisso in viewport per non "scorrere"
+   sotto il contenuto e restare uniforme anche su pagine lunghe. */
+body {
+  @apply text-slate-900 antialiased;
+  background-color: theme('colors.slate.50');
+  background-image:
+    radial-gradient(75rem 45rem at 8% -10%, theme('colors.brand.200' / 70%), transparent 58%),
+    radial-gradient(60rem 40rem at 100% 0%, theme('colors.accent.200' / 55%), transparent 60%),
+    radial-gradient(50rem 30rem at 50% 100%, theme('colors.brand.100' / 45%), transparent 65%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
 
 /* Focus visibile ovunque, per navigazione da tastiera */
 *:focus-visible { @apply outline-none ring-2 ring-brand-600 ring-offset-1 rounded-sm; }
 
 @layer components {
   .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
-  .btn-primary { @apply btn bg-brand-700 text-white hover:bg-brand-800; }
+  .btn-primary { @apply btn bg-gradient-to-b from-brand-700 to-brand-900 text-white hover:from-brand-800 hover:to-brand-950 shadow-sm; }
   .btn-secondary { @apply btn bg-white text-slate-800 border border-slate-300 hover:bg-slate-100; }
   .btn-danger { @apply btn bg-red-700 text-white hover:bg-red-800; }
-  .card { @apply bg-white rounded-xl border border-slate-200 shadow-sm; }
+  .card { @apply bg-white/85 backdrop-blur-sm rounded-xl border border-slate-200/80 shadow-sm; }
+  /* Superficie d'accento per intestazioni e pannelli: la stessa sfumatura del logo,
+     tenuta chiara perché il testo sopra resti leggibile senza forzare i contrasti. */
+  .surface-brand { @apply bg-gradient-to-br from-brand-50 via-white to-accent-50; }
   .input { @apply w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base bg-white placeholder:text-slate-400 focus:border-brand-600; }
   .label { @apply block text-sm font-medium text-slate-700 mb-1; }
   .badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }

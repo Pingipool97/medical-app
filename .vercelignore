@@ -1,0 +1,18 @@
+# File che non devono MAI finire in un deployment caricato dal CLI.
+# Vercel ricade sul .gitignore quando questo file manca, ma le chiavi non vanno
+# lasciate a un comportamento predefinito: qui sono escluse in modo esplicito.
+.env
+.env.*
+!.env.example
+
+node_modules
+.next
+storage
+prisma/*.db
+prisma/*.db-journal
+*.tsbuildinfo
+
+.claude
+assets
+docs
+NOTES.md

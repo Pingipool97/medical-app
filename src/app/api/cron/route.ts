@@ -16,6 +16,11 @@ import { fmtDate, fmtTime } from '@/lib/format';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+// Ogni quante ore gira davvero questo job. Sul piano Hobby di Vercel i cron sono
+// ammessi una volta al giorno (vedi vercel.json), quindi 24. Passando a Pro si mette
+// il cron ogni ora e si porta questa a 1: le preferenze utente tornano precise.
+const CRON_PERIOD_HOURS = Number(process.env.CRON_PERIOD_HOURS ?? 24);
+
 function authorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
@@ -58,8 +63,15 @@ export async function GET(req: Request) {
         userId: { in: [a.patient.userId, a.doctor.userId] },
       },
     });
+    // Con un job giornaliero un anticipo di 2 ore non sarebbe mai raggiungibile: al
+    // passaggio precedente mancano più di 24 ore, al successivo l'appuntamento è già
+    // passato. Si avvisa quindi anche tutto ciò che cade prima del prossimo passaggio:
+    // meglio un promemoria in anticipo che nessun promemoria.
     const anticipo = (userId: string) =>
-      prefs.find((p) => p.userId === userId)?.reminderHours ?? DEFAULT_REMINDER_HOURS;
+      Math.max(
+        prefs.find((p) => p.userId === userId)?.reminderHours ?? DEFAULT_REMINDER_HOURS,
+        CRON_PERIOD_HOURS,
+      );
 
     const quando = `${fmtDate(a.startsAt)} alle ${fmtTime(a.startsAt)}`;
     let any = false;

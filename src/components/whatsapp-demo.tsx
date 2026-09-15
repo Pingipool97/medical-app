@@ -84,7 +84,7 @@ function Bubble({ m, time }: { m: WaMessage; time: string }) {
   );
 }
 
-export default function WhatsAppDemo() {
+export default function WhatsAppDemo({ embedded = false }: { embedded?: boolean }) {
   const [convs, setConvs] = useState<WaConversation[]>(DEMO_CONVERSATIONS);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -166,14 +166,18 @@ export default function WhatsAppDemo() {
   };
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-slate-100">
+    <div
+      className={`flex flex-col bg-slate-100 ${
+        embedded ? 'h-[calc(100dvh-10rem)] min-h-[32rem] rounded-xl border border-slate-200 overflow-hidden' : 'h-[100dvh]'
+      }`}
+    >
       {/* Fascia di avviso: questa è un'anteprima, non un'integrazione attiva */}
       <div className="bg-amber-100 border-b border-amber-300 text-amber-900 text-xs px-3 py-1.5 flex items-center gap-2 shrink-0">
         <Icon name="shield" className="w-4 h-4 shrink-0" />
         <span className="flex-1">
           <strong>Anteprima dimostrativa.</strong> Conversazioni finte: nessun collegamento a Meta/WhatsApp, nessun messaggio inviato davvero.
         </span>
-        <a href="/login" className="underline whitespace-nowrap">Esci</a>
+        {!embedded && <a href="/login" className="underline whitespace-nowrap">Esci</a>}
       </div>
 
       <div className="flex-1 min-h-0 flex">

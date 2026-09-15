@@ -48,7 +48,7 @@ export default function LoginPage() {
               <p className="text-xs text-slate-500 mt-0.5 mb-2">
                 Funzioni non ancora attive, mostrate con dati finti.
               </p>
-              <a href="/demo/whatsapp" className="btn-secondary text-sm">WhatsApp con agente IA</a>
+              <a href="/api/dev-login?role=DOCTOR&next=/medico/whatsapp" className="btn-secondary text-sm">WhatsApp con agente IA</a>
             </div>
           </div>
         )}

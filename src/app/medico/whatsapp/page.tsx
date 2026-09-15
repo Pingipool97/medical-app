@@ -1,14 +1,15 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
+import { demoEnabled } from '@/lib/demo-access';
 import { Alert, Card, PageTitle } from '@/components/ui';
 import { Icon } from '@/components/icons';
+import WhatsAppDemo from '@/components/whatsapp-demo';
 
 export const dynamic = 'force-dynamic';
 
-// Sezione dichiarata in costruzione. L'anteprima del flusso e del layout esiste
-// (/demo/whatsapp) ma è a dati finti: qui si dice cosa manca davvero, senza far
-// credere che basti premere un interruttore.
+// Con la demo attiva questa pagina mostra l'anteprima vera e propria: si vede la chat,
+// non una descrizione della chat. Con la demo spenta resta la scheda "in costruzione",
+// che dichiara cosa manca per attivare l'integrazione davvero.
 
 const REQUISITI: { titolo: string; testo: string }[] = [
   {
@@ -32,7 +33,18 @@ const REQUISITI: { titolo: string; testo: string }[] = [
 export default async function WhatsAppPage() {
   const session = await getSession();
   if (!session || session.role !== 'DOCTOR') redirect('/login');
-  const demoEnabled = process.env.DEV_LOGIN === 'true' || process.env.DEMO_MODE === 'true';
+
+  if (demoEnabled()) {
+    return (
+      <>
+        <PageTitle
+          title="WhatsApp"
+          subtitle="Le conversazioni dei pazienti, gestite dall’agente IA con la tua supervisione."
+        />
+        <WhatsAppDemo embedded />
+      </>
+    );
+  }
 
   return (
     <>
@@ -65,11 +77,6 @@ export default async function WhatsAppPage() {
               </li>
             ))}
           </ul>
-          {demoEnabled && (
-            <Link href="/demo/whatsapp" className="btn-primary mt-4 inline-flex">
-              Apri l’anteprima dimostrativa
-            </Link>
-          )}
         </Card>
 
         <Card title="Cosa manca per attivarla">

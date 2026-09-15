@@ -46,5 +46,10 @@ export async function GET(req: NextRequest) {
 
   await createSession(buildSessionPayload(user, false));
   await audit({ actorUserId: user.id, actorRole: user.role, action: 'LOGIN', metadata: { demoLogin: true, role } });
-  return NextResponse.redirect(new URL(DEST[role], req.url), 303);
+
+  // Destinazione facoltativa, per entrare direttamente su una sezione. Solo percorsi
+  // interni: "//host" e gli URL assoluti verrebbero usati per rimbalzare altrove.
+  const next = req.nextUrl.searchParams.get('next');
+  const dest = next && /^\/[A-Za-z0-9/_-]*$/.test(next) ? next : DEST[role];
+  return NextResponse.redirect(new URL(dest, req.url), 303);
 }

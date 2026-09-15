@@ -18,3 +18,17 @@ export function allowedDemoRoles(): string[] {
 export function demoEnabled(): boolean {
   return allowedDemoRoles().length > 0;
 }
+
+// Gli unici account su cui ha senso il passaggio rapido da un ruolo all'altro.
+const DEMO_EMAILS = new Set(['paziente@demo.it', 'medico@demo.it', 'admin@demo.it']);
+
+/**
+ * Chi sta usando l'app è dentro un account dimostrativo?
+ *
+ * Serve perché il selettore di vista non deve comparire a un utente vero: un paziente
+ * appena registrato vedeva "Vista medico" e cliccandolo finiva dentro l'account del
+ * medico demo. Non è un cambio di vista, è entrare in un altro account.
+ */
+export function isDemoAccount(email?: string | null): boolean {
+  return Boolean(email && DEMO_EMAILS.has(email.toLowerCase()));
+}

@@ -12,7 +12,15 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(clients.claim());
+  // Cancella le cache delle versioni precedenti: senza questo, cambiando il nome della
+  // cache i contenuti vecchi restano nel browser occupando spazio, e un service worker
+  // rimasto attivo continuerebbe a servirli. Vale anche per il rename cartella → habitus.
+  e.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => clients.claim()),
+  );
 });
 
 self.addEventListener('message', (e) => {

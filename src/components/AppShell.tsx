@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { unreadCount } from '@/lib/notify';
 import { redirect } from 'next/navigation';
-import { LogoutButton, FontSizeToggle, NavLinks, BottomNav } from './shell-client';
+import { LogoutButton, FontSizeToggle, NavLinks, BottomNav, MobileMenu } from './shell-client';
 import { Logo } from './logo';
 import { Icon } from './icons';
 import { allowedDemoRoles, isDemoAccount } from '@/lib/demo-access';
@@ -113,9 +113,12 @@ export default async function AppShell({ role, children }: { role: string; child
 
       {/* Header mobile */}
       <header className="lg:hidden sticky top-0 z-20 surface-brand border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
-        <Link href={nav[0]?.href ?? '/'} aria-label="HABITUS — home">
-          <Logo variant="full" className="h-7 w-auto" priority />
-        </Link>
+        <div className="flex items-center gap-1 min-w-0">
+          <MobileMenu items={nav} displayName={session.displayName} notifHref={notifHref} />
+          <Link href={nav[0]?.href ?? '/'} aria-label="HABITUS — home">
+            <Logo variant="full" className="h-7 w-auto" priority />
+          </Link>
+        </div>
         <div className="flex items-center gap-4 text-slate-600">
           {onDemoAccount && (
             <a href={`/api/dev-login?role=${role === 'PATIENT' ? 'DOCTOR' : 'PATIENT'}`} className="text-xs underline text-amber-700">

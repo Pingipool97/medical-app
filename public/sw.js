@@ -7,9 +7,12 @@
 const CACHE = 'habitus-v1';
 const OFFLINE_PATHS = ['/paziente', '/paziente/timeline', '/paziente/documenti', '/paziente/diario'];
 
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
-});
+// Niente skipWaiting automatico: il service worker nuovo resta in attesa finché
+// l'utente non sceglie di aggiornare (vedi src/components/pwa-updater.tsx). Prendendo
+// il posto del vecchio da solo, la pagina già aperta continuerebbe comunque a eseguire
+// il JavaScript vecchio — ed è il motivo per cui l'app installata sembrava non
+// aggiornarsi mai.
+self.addEventListener('install', () => {});
 
 self.addEventListener('activate', (e) => {
   // Cancella le cache delle versioni precedenti: senza questo, cambiando il nome della
@@ -25,6 +28,8 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('message', (e) => {
   if (e.data === 'logout') caches.delete(CACHE);
+  // L'utente ha premuto "Aggiorna": ora il service worker nuovo può subentrare.
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (e) => {

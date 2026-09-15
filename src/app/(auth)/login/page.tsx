@@ -43,13 +43,9 @@ export default function LoginPage() {
                 </a>
               ))}
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-200">
-              <p className="text-sm font-semibold text-slate-800">Anteprime</p>
-              <p className="text-xs text-slate-500 mt-0.5 mb-2">
-                Funzioni non ancora attive, mostrate con dati finti.
-              </p>
-              <a href="/api/dev-login?role=DOCTOR&next=/medico/whatsapp" className="btn-secondary text-sm">WhatsApp con agente IA</a>
-            </div>
+            <p className="text-xs text-slate-500 mt-3">
+              Le funzioni non ancora attive, come WhatsApp con agente IA, si vedono dentro l’area medico.
+            </p>
           </div>
         )}
       </div>

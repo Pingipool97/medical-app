@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { PwaUpdater } from '@/components/pwa-updater';
 
 export const metadata: Metadata = {
   title: { default: 'HABITUS APP', template: '%s — HABITUS APP' },
@@ -28,18 +29,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="it">
       <body>
         {children}
+        <PwaUpdater />
         <script
           dangerouslySetInnerHTML={{
-            // Il service worker solo in produzione: in sviluppo i chunk di Next hanno nomi
-            // stabili e la strategia cache-first su /_next/static servirebbe JavaScript
-            // vecchio a ogni modifica, rendendo invisibili le ricompilazioni.
-            // In dev si disinstalla anche quello eventualmente già registrato.
-            __html: `${
-              process.env.NODE_ENV === 'production'
-                ? `if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))}`
-                : `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()));if(window.caches)caches.keys().then(ks=>ks.forEach(k=>caches.delete(k)));}`
-            }
-try{var fs=localStorage.getItem('fontsize');if(fs)document.documentElement.dataset.fontsize=fs;}catch(e){}`,
+            // Solo la dimensione del testo: va applicata prima del primo disegno, o si
+            // vedrebbe la pagina cambiare taglia sotto gli occhi.
+            __html: `try{var fs=localStorage.getItem('fontsize');if(fs)document.documentElement.dataset.fontsize=fs;}catch(e){}`,
           }}
         />
       </body>

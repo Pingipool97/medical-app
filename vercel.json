@@ -3,7 +3,6 @@
   "crons": [
     {
       "path": "/api/cron",
-      "//": "Una volta al giorno: il piano Hobby non ammette frequenze maggiori e un vercel.json che le dichiara fa rifiutare l'intero deployment. Alle 06:00 UTC, cioè le 7 o le 8 italiane a seconda dell'ora legale: i promemoria del giorno partono prima che lo studio apra. Passando al piano Pro si può tornare a 0 * * * * per avvisi più puntuali.",
       "schedule": "0 6 * * *"
     }
   ]

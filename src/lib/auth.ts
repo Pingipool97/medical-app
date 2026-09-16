@@ -162,8 +162,9 @@ export function encryptTotpSecret(plain: string): string {
 }
 
 export function needsTwoFactor(role: string): boolean {
-  // Bypass di SVILUPPO: con DISABLE_2FA=true in .env si entra con sola password.
-  // In produzione questa variabile NON va impostata: la 2FA resta obbligatoria per medici e admin.
-  if (process.env.DISABLE_2FA === 'true') return false;
+  // 2FA DISATTIVATA per scelta: si entra con sola email e password.
+  // Il codice TOTP resta tutto al suo posto (pagina, verifica, cifratura del segreto):
+  // per riaccenderla basta ENABLE_2FA=true, e torna obbligatoria per medici e admin.
+  if (process.env.ENABLE_2FA !== 'true') return false;
   return role === ROLES.DOCTOR || role === ROLES.ADMIN;
 }

@@ -303,6 +303,28 @@ async function main() {
     create: { email: 'admin@demo.it', passwordHash: pwd, role: 'ADMIN', emailVerifiedAt: new Date() },
   });
 
+  // Admin reale del proprietario: non e' un account dimostrativo, non compare fra i
+  // pulsanti di accesso rapido. Si entra dal login normale con email e password.
+  // update forza ruolo e password anche se l'utente esiste gia': deve restare l'admin buono.
+  await db.user.upsert({
+    where: { email: 'acumeartificialintelligence@gmail.com' },
+    update: {
+      passwordHash: await bcrypt.hash('Acume.2026', 12),
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      emailVerifiedAt: new Date(),
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+    },
+    create: {
+      email: 'acumeartificialintelligence@gmail.com',
+      passwordHash: await bcrypt.hash('Acume.2026', 12),
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      emailVerifiedAt: new Date(),
+    },
+  });
+
   const docUser = await db.user.upsert({
     where: { email: 'medico@demo.it' },
     update: {},

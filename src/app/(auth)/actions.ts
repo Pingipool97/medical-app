@@ -239,6 +239,9 @@ export async function registerDoctorAction(_prev: ActionState, formData: FormDat
   if (v) await db.consentRecord.create({ data: { userId: user.id, consentVersionId: v.id, ip } });
 
   await audit({ actorUserId: user.id, actorRole: 'DOCTOR', action: 'REGISTER', ip });
-  await createSession(buildSessionPayload(user, true)); // 2FA obbligatoria da subito
-  redirect('/verifica-2fa');
+  // Il medico entra subito. Se un domani si riaccende ENABLE_2FA, la configura qui.
+  const twoFa = needsTwoFactor('DOCTOR');
+  await createSession(buildSessionPayload(user, twoFa));
+  if (twoFa) redirect('/verifica-2fa');
+  redirect(dest('DOCTOR'));
 }

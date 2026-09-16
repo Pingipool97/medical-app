@@ -4,9 +4,9 @@ import { useState, useTransition } from 'react';
 import { useFormState } from 'react-dom';
 import {
   updateDoctorProfileAction, addOfficeAction, removeOfficeAction,
-  addSpecializationAction, removeSpecializationAction, type ActionState,
+  setSpecializationsAction, type ActionState,
 } from '../actions';
-import { Alert, Field, SelectField, TextArea } from '@/components/ui';
+import { Alert, CheckboxGroupField, Field, TextArea } from '@/components/ui';
 
 function Feedback({ state }: { state: ActionState }) {
   if (!state) return null;
@@ -75,39 +75,23 @@ export function RemoveOfficeButton({ index }: { index: number }) {
   );
 }
 
-export function AddSpecializationForm({ options }: { options: { value: string; label: string }[] }) {
-  const [state, action] = useFormState<ActionState, FormData>(addSpecializationAction, null);
-  if (options.length === 0) return <p className="text-sm text-slate-500">Non ci sono altre specializzazioni disponibili da aggiungere.</p>;
+export function SpecializationsForm({ options, selected }: {
+  options: { value: string; label: string; note?: string }[];
+  selected: string[];
+}) {
+  const [state, action] = useFormState<ActionState, FormData>(setSpecializationsAction, null);
   return (
     <form action={action} className="space-y-3">
       <Feedback state={state} />
-      <div className="flex items-end gap-3 flex-wrap">
-        <div className="min-w-[240px]">
-          <SelectField label="Aggiungi specializzazione" name="specializationId" required options={options} />
-        </div>
-        <button type="submit" className="btn-secondary">Aggiungi</button>
-      </div>
+      <CheckboxGroupField
+        label="Le tue professioni"
+        name="specializations"
+        options={options}
+        defaultSelected={selected}
+        hint="Spunta tutte quelle che eserciti. Il paziente le vede sotto al tuo nome, in ordine alfabetico."
+      />
+      <button type="submit" className="btn-secondary">Salva le professioni</button>
     </form>
   );
 }
 
-export function RemoveSpecializationButton({ id }: { id: string }) {
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <span>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => start(async () => {
-          const res = await removeSpecializationAction(id);
-          if (res?.error) setError(res.error);
-        })}
-        className="text-xs text-red-700 hover:underline disabled:opacity-50"
-      >
-        {pending ? 'Rimuovo…' : 'Rimuovi'}
-      </button>
-      {error && <span className="text-xs text-red-700 ml-2">{error}</span>}
-    </span>
-  );
-}

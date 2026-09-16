@@ -3,19 +3,25 @@ import { useState } from 'react';
 import { useFormState } from 'react-dom';
 import Link from 'next/link';
 import { registerDoctorAction, type ActionState } from '../../actions';
-import { Alert, Field, SelectField } from '@/components/ui';
+import { Alert, CheckboxGroupField, Field } from '@/components/ui';
 import { Logo } from '@/components/logo';
 
 export type SpecOption = { value: string; label: string; requiresOrdine: boolean };
 
 export default function DoctorForm({ specializations }: { specializations: SpecOption[] }) {
   const [state, action] = useFormState<ActionState, FormData>(registerDoctorAction, null);
-  const [specCode, setSpecCode] = useState('');
+  const [specCodes, setSpecCodes] = useState<string[]>([]);
 
-  // I campi Ordine compaiono solo quando la professione scelta li richiede davvero.
-  // Prima della scelta non si mostra nulla: non si può sapere se servano.
-  const selected = specializations.find((s) => s.value === specCode);
-  const needsOrdine = selected?.requiresOrdine ?? false;
+  const toggle = (code: string) =>
+    setSpecCodes((prima) => (prima.includes(code) ? prima.filter((c) => c !== code) : [...prima, code]));
+
+  // I campi Ordine compaiono solo quando servono davvero. Con piu' professioni scelte
+  // basta che UNA sia iscritta a un albo: il numero si chiede una volta sola, perche'
+  // il profilo ne conserva uno solo.
+  const selected = specializations.filter((s) => specCodes.includes(s.value));
+  const conOrdine = selected.filter((s) => s.requiresOrdine);
+  const senzaOrdine = selected.filter((s) => !s.requiresOrdine);
+  const needsOrdine = conOrdine.length > 0;
 
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4">
@@ -38,15 +44,18 @@ export default function DoctorForm({ specializations }: { specializations: SpecO
               <Field label="Cognome" name="lastName" required />
             </div>
 
-            <SelectField
-              label="Professione / specializzazione"
-              name="specialization"
+            <CheckboxGroupField
+              label="Professioni / specializzazioni"
+              name="specializations"
               required
-              options={specializations}
-              value={specCode}
-              onChange={setSpecCode}
-              placeholder="Seleziona la tua professione…"
-              hint="Potrai aggiungerne altre dal profilo."
+              options={specializations.map((s) => ({
+                value: s.value,
+                label: s.label,
+                note: s.requiresOrdine ? 'Iscritta a un Ordine professionale' : 'Nessun Ordine professionale',
+              }))}
+              selected={specCodes}
+              onToggle={toggle}
+              hint="Puoi sceglierne piu' di una. Restano modificabili dal tuo profilo."
             />
 
             {needsOrdine && (
@@ -61,14 +70,16 @@ export default function DoctorForm({ specializations }: { specializations: SpecO
                   style={{ textTransform: 'uppercase' }}
                 />
                 <p className="sm:col-span-2 text-xs text-slate-600 -mt-1">
-                  Richiesto per <strong>{selected?.label}</strong>, professione iscritta a un Ordine professionale.
+                  Richiesto per <strong>{conOrdine.map((s) => s.label).join(', ')}</strong>
+                  {conOrdine.length > 1 ? ', professioni iscritte a un Ordine professionale.' : ', professione iscritta a un Ordine professionale.'}
                 </p>
               </div>
             )}
 
-            {selected && !needsOrdine && (
+            {senzaOrdine.length > 0 && (
               <p className="text-xs text-slate-600 rounded-lg bg-accent-50 border border-accent-100 px-3 py-2">
-                Per <strong>{selected.label}</strong> non è prevista l’iscrizione a un Ordine: nessun numero di albo da inserire.
+                Per <strong>{senzaOrdine.map((s) => s.label).join(', ')}</strong> non è prevista l’iscrizione a un Ordine:
+                {needsOrdine ? ' per queste non serve alcun numero di albo.' : ' nessun numero di albo da inserire.'}
               </p>
             )}
 
@@ -83,7 +94,7 @@ export default function DoctorForm({ specializations }: { specializations: SpecO
               type="password"
               required
               minLength={10}
-              hint="Almeno 10 caratteri, una maiuscola e un numero. Ti verrà chiesta anche l’autenticazione a due fattori, obbligatoria per i professionisti."
+              hint="Almeno 10 caratteri, una maiuscola e un numero."
             />
             <label className="flex gap-2 text-sm items-start">
               <input type="checkbox" name="consenso_privacy" className="mt-1" required />

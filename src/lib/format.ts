@@ -48,3 +48,25 @@ export function ageFrom(birth: Date | string): number {
   if (now.getMonth() < b.getMonth() || (now.getMonth() === b.getMonth() && now.getDate() < b.getDate())) age--;
   return age;
 }
+
+// ── Come si presenta un professionista ──
+
+type ConSpecializzazioni = { specializations?: { specialization: { name: string } }[] };
+
+/**
+ * La riga piccola sotto al nome: che professionista e'. Sta qui e non nelle pagine
+ * perche' il paziente la incontra in dieci punti diversi (medici, appuntamenti,
+ * messaggi, richieste, documenti ricevuti) e deve leggerla sempre uguale.
+ *
+ * Un professionista puo' avere piu' professioni: si mostrano tutte, in ordine
+ * alfabetico, separate da virgola. Nessuna e' la principale.
+ */
+export function specList(d: ConSpecializzazioni, vuoto = 'Specializzazione non indicata'): string {
+  const nomi = (d.specializations ?? []).map((s) => s.specialization.name).sort((a, b) => a.localeCompare(b, 'it'));
+  return nomi.length ? nomi.join(', ') : vuoto;
+}
+
+/** Nome per esteso, come va scritto ovunque: "Dr. Mario Rossi". */
+export function doctorName(d: { firstName: string; lastName: string }): string {
+  return `Dr. ${d.firstName} ${d.lastName}`;
+}

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { fmtDate, fmtDateTime } from '@/lib/format';
+import { doctorName, fmtDate, fmtDateTime, specList } from '@/lib/format';
 import { AiDisclaimer, Badge, Card, EmptyState, PageTitle } from '@/components/ui';
 import { IssuedItem } from './client';
 
@@ -36,7 +36,7 @@ export default async function RicevutiPage() {
     db.issuedDocument.findMany({
       where: { patientId },
       orderBy: { createdAt: 'desc' },
-      include: { doctor: true },
+      include: { doctor: { include: { specializations: { include: { specialization: true } } } } },
     }),
     db.aiOutput.findMany({
       where: { state: 'PUBLISHED', audience: 'PATIENT', job: { patientId } },
@@ -73,7 +73,7 @@ export default async function RicevutiPage() {
                   <div>
                     <span className="text-sm font-semibold text-slate-800">{doc.title}</span>
                     <span className="block text-xs text-slate-500 mt-0.5">
-                      {KIND_LABEL[doc.kind] ?? doc.kind} · Dr. {doc.doctor.firstName} {doc.doctor.lastName} · {fmtDate(doc.createdAt)}
+                      {KIND_LABEL[doc.kind] ?? doc.kind} · {doctorName(doc.doctor)} · {specList(doc.doctor, 'professione non indicata')} · {fmtDate(doc.createdAt)}
                       {' '}
                       {signed
                         ? <Badge color="green">Firmato digitalmente</Badge>

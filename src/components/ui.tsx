@@ -79,6 +79,59 @@ export function SelectField({ label, name, options, required, defaultValue, hint
   );
 }
 
+/**
+ * Scelta multipla con caselle. Niente <select multiple>: su telefono e' una lista
+ * grigia che richiede il dito premuto per non perdere le voci gia' scelte, e nessuno
+ * indovina come si fa. Le caselle si vedono, si toccano e si leggono.
+ *
+ * Senza `selected` il campo va da se' (defaultSelected) e il browser invia tutte le
+ * caselle spuntate sotto lo stesso `name`: lato server si legge con formData.getAll.
+ * Con `selected` + `onToggle` lo comanda il chiamante, che serve quando la scelta
+ * cambia il resto del modulo — come i campi dell'Ordine in registrazione.
+ *
+ * Nessun hook qui dentro: il componente resta usabile anche da un server component.
+ */
+export function CheckboxGroupField({ label, name, options, required, hint, selected, onToggle, defaultSelected = [] }: {
+  label: string;
+  name: string;
+  options: { value: string; label: string; note?: string }[];
+  required?: boolean;
+  hint?: string;
+  selected?: string[];
+  onToggle?: (value: string) => void;
+  defaultSelected?: string[];
+}) {
+  const controlled = selected !== undefined;
+  return (
+    <fieldset>
+      <legend className="label">{label}{required && <span className="text-red-600" aria-hidden> *</span>}</legend>
+      <div className="mt-1 rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-64 overflow-y-auto">
+        {options.map((o) => {
+          const on = controlled ? selected!.includes(o.value) : undefined;
+          return (
+            <label key={o.value} className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
+              <input
+                type="checkbox"
+                name={name}
+                value={o.value}
+                className="mt-0.5 shrink-0"
+                {...(controlled
+                  ? { checked: on, onChange: () => onToggle?.(o.value) }
+                  : { defaultChecked: defaultSelected.includes(o.value) })}
+              />
+              <span className="text-sm text-slate-800 leading-snug">
+                {o.label}
+                {o.note && <span className="block text-xs text-slate-500">{o.note}</span>}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {hint && <p className="text-xs text-slate-500 mt-1">{hint}</p>}
+    </fieldset>
+  );
+}
+
 export function TextArea({ label, name, required, defaultValue, placeholder, rows = 4, hint }: {
   label: string; name: string; required?: boolean; defaultValue?: string; placeholder?: string; rows?: number; hint?: string;
 }) {

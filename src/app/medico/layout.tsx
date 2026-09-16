@@ -8,14 +8,22 @@ export const dynamic = 'force-dynamic';
 export default async function MedicoLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session?.doctorId) redirect('/login');
-  const doctor = await db.doctorProfile.findUnique({ where: { id: session.doctorId } });
+  const doctor = await db.doctorProfile.findUnique({
+    where: { id: session.doctorId },
+    include: { specializations: { include: { specialization: true } } },
+  });
+
+  // Non tutte le professioni hanno un albo: a un massofisioterapista non si puo' dire
+  // che aspetti la conferma di un'iscrizione all'Ordine che non ha mai avuto.
+  const conOrdine = doctor?.specializations.some((s) => s.specialization.requiresOrdine) ?? false;
 
   return (
     <AppShell role="DOCTOR">
       {doctor?.verificationStatus === 'PENDING' && (
         <div className="alert-critical mb-5" role="alert">
           <strong>Account in verifica:</strong> non puoi emettere documenti né accettare pazienti finché
-          l’amministrazione non conferma la tua iscrizione all’Ordine. Riceverai una notifica a verifica conclusa.
+          l’amministrazione non conferma {conOrdine ? 'la tua iscrizione all’Ordine' : 'la tua qualifica professionale'}.
+          Riceverai una notifica a verifica conclusa.
         </div>
       )}
       {doctor?.verificationStatus === 'REJECTED' && (

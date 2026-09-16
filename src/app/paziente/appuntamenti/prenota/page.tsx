@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { fmtEuro } from '@/lib/format';
+import { doctorName, fmtEuro, specList } from '@/lib/format';
 import { BackLink, Card, EmptyState, PageTitle } from '@/components/ui';
 import { BookingFlow } from './booking';
 
@@ -14,7 +14,7 @@ export default async function PrenotaPage() {
 
   const links = await db.doctorPatientLink.findMany({
     where: { patientId: session.patientId, status: 'ACTIVE' },
-    include: { doctor: { include: { services: { where: { active: true }, orderBy: { name: 'asc' } } } } },
+    include: { doctor: { include: { services: { where: { active: true }, orderBy: { name: 'asc' } }, specializations: { include: { specialization: true } } } } },
   });
 
   return (
@@ -38,7 +38,7 @@ export default async function PrenotaPage() {
           <BookingFlow
             doctors={links.map((l) => ({
               id: l.doctorId,
-              label: `Dr. ${l.doctor.firstName} ${l.doctor.lastName}`,
+              label: `${doctorName(l.doctor)} — ${specList(l.doctor, 'professione non indicata')}`,
               services: l.doctor.services.map((s) => ({
                 id: s.id,
                 name: s.name,

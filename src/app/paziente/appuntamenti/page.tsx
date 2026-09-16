@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { fmtDate, fmtDateTime } from '@/lib/format';
+import { doctorName, fmtDate, fmtDateTime, specList } from '@/lib/format';
 import { APPOINTMENT_STATUS_LABEL, autoPatientColor } from '@/lib/constants';
 import { dateKey, minutesOfDay, todayKey, fromZoned, shiftMonthKey, startOfMonth } from '@/lib/datetime';
 import { Badge, Card, EmptyState, PageTitle, statusBadgeColor } from '@/components/ui';
@@ -27,21 +27,21 @@ export default async function AppuntamentiPage() {
     db.appointment.findMany({
       where: { patientId, startsAt: { gte: now } },
       orderBy: { startsAt: 'asc' },
-      include: { doctor: true, service: true },
+      include: { doctor: { include: { specializations: { include: { specialization: true } } } }, service: true },
     }),
     db.appointment.findMany({
       where: { patientId, startsAt: { lt: now } },
       orderBy: { startsAt: 'desc' },
       take: 30,
-      include: { doctor: true, service: true },
+      include: { doctor: { include: { specializations: { include: { specialization: true } } } }, service: true },
     }),
     db.doctorPatientLink.findMany({
       where: { patientId, status: 'ACTIVE' },
-      include: { doctor: { include: { services: { where: { active: true } } } } },
+      include: { doctor: { include: { services: { where: { active: true } }, specializations: { include: { specialization: true } } } } },
     }),
     db.waitlistEntry.findMany({
       where: { patientId },
-      include: { doctor: true, service: true },
+      include: { doctor: { include: { specializations: { include: { specialization: true } } } }, service: true },
       orderBy: { createdAt: 'desc' },
     }),
     db.appointment.findMany({
@@ -92,9 +92,10 @@ export default async function AppuntamentiPage() {
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <p className="text-sm font-semibold text-slate-800">
-                      {a.service?.name ?? 'Visita'} — Dr. {a.doctor.firstName} {a.doctor.lastName}
+                      {a.service?.name ?? 'Visita'} — {doctorName(a.doctor)}
                     </p>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <p className="text-xs font-medium text-brand-700 mt-0.5">{specList(a.doctor)}</p>
+                    <p className="text-xs text-slate-500">
                       {fmtDateTime(a.startsAt)} · {a.mode === 'VIDEO' ? 'In videoconsulto' : 'In presenza'}
                     </p>
                     {a.status === 'ANNULLATO' && a.cancelReason && (
@@ -120,7 +121,7 @@ export default async function AppuntamentiPage() {
           <ul className="mb-4 divide-y divide-slate-100">
             {waitlist.map((w) => (
               <li key={w.id} className="py-2 text-sm text-slate-700">
-                Dr. {w.doctor.firstName} {w.doctor.lastName}
+                {doctorName(w.doctor)} <span className="text-xs font-medium text-brand-700">{specList(w.doctor, '')}</span>
                 {w.service ? ` — ${w.service.name}` : ' — qualsiasi prestazione'}
                 <span className="text-xs text-slate-500"> · in lista dal {fmtDate(w.createdAt)}{w.notifiedAt ? ` · avvisato il ${fmtDate(w.notifiedAt)}` : ''}</span>
               </li>
@@ -133,7 +134,7 @@ export default async function AppuntamentiPage() {
           <JoinWaitlistForm
             doctors={links.map((l) => ({
               id: l.doctorId,
-              label: `Dr. ${l.doctor.firstName} ${l.doctor.lastName}`,
+              label: `${doctorName(l.doctor)} — ${specList(l.doctor, 'professione non indicata')}`,
               services: l.doctor.services.map((s) => ({ id: s.id, label: s.name })),
             }))}
           />
@@ -149,9 +150,9 @@ export default async function AppuntamentiPage() {
               <li key={a.id} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <p className="text-sm font-medium text-slate-700">
-                    {a.service?.name ?? 'Visita'} — Dr. {a.doctor.firstName} {a.doctor.lastName}
+                    {a.service?.name ?? 'Visita'} — {doctorName(a.doctor)}
                   </p>
-                  <p className="text-xs text-slate-500">{fmtDateTime(a.startsAt)}</p>
+                  <p className="text-xs text-slate-500">{specList(a.doctor, '')} · {fmtDateTime(a.startsAt)}</p>
                 </div>
                 <Badge color={statusBadgeColor(a.status)}>{APPOINTMENT_STATUS_LABEL[a.status] ?? a.status}</Badge>
               </li>

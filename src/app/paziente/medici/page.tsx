@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { fmtDate } from '@/lib/format';
+import { doctorName, fmtDate, specList } from '@/lib/format';
 import { DEMO_EMAILS, isDemoAccount } from '@/lib/demo-access';
 import { Badge, Card, EmptyState, PageTitle } from '@/components/ui';
 import { RevokeLinkButton, ConnectDoctorForm } from './client';
@@ -36,9 +36,6 @@ export default async function MediciPage() {
     orderBy: { lastName: 'asc' },
   });
 
-  const specList = (d: { specializations: { specialization: { name: string } }[] }) =>
-    d.specializations.map((s) => s.specialization.name).join(', ') || 'Specializzazione non indicata';
-
   return (
     <div className="space-y-5">
       <PageTitle
@@ -55,9 +52,9 @@ export default async function MediciPage() {
               <li key={l.id} className="py-3 flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
-                    Dr. {l.doctor.firstName} {l.doctor.lastName} <Badge color="green">Collegato</Badge>
+                    {doctorName(l.doctor)} <Badge color="green">Collegato</Badge>
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5">{specList(l.doctor)}</p>
+                  <p className="text-xs font-medium text-brand-700 mt-0.5">{specList(l.doctor)}</p>
                   <p className="text-xs text-slate-500">
                     Risponde entro {l.doctor.responseTimeHours} ore
                     {l.acceptedAt ? ` · collegati dal ${fmtDate(l.acceptedAt)}` : ''}
@@ -77,8 +74,9 @@ export default async function MediciPage() {
             {pending.map((l) => (
               <li key={l.id} className="py-3 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-800">Dr. {l.doctor.firstName} {l.doctor.lastName}</p>
-                  <p className="text-xs text-slate-500">{specList(l.doctor)} · richiesta inviata il {fmtDate(l.createdAt)}</p>
+                  <p className="text-sm font-medium text-slate-800">{doctorName(l.doctor)}</p>
+                  <p className="text-xs font-medium text-brand-700">{specList(l.doctor)}</p>
+                  <p className="text-xs text-slate-500">Richiesta inviata il {fmtDate(l.createdAt)}</p>
                 </div>
                 <Badge color="amber">In attesa del medico</Badge>
               </li>
@@ -102,9 +100,9 @@ export default async function MediciPage() {
               <li key={d.id} className="py-3 flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
-                    Dr. {d.firstName} {d.lastName} <Badge color="green">Verificato</Badge>
+                    {doctorName(d)} <Badge color="green">Verificato</Badge>
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5">{specList(d)}</p>
+                  <p className="text-xs font-medium text-brand-700 mt-0.5">{specList(d)}</p>
                   {d.structureName && <p className="text-xs text-slate-500">{d.structureName}</p>}
                   {d.bio && <p className="text-xs text-slate-600 mt-1 max-w-xl">{d.bio}</p>}
                 </div>

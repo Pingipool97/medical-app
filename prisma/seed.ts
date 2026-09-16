@@ -303,27 +303,36 @@ async function main() {
     create: { email: 'admin@demo.it', passwordHash: pwd, role: 'ADMIN', emailVerifiedAt: new Date() },
   });
 
-  // Admin reale del proprietario: non e' un account dimostrativo, non compare fra i
-  // pulsanti di accesso rapido. Si entra dal login normale con email e password.
-  // update forza ruolo e password anche se l'utente esiste gia': deve restare l'admin buono.
-  await db.user.upsert({
-    where: { email: 'acumeartificialintelligence@gmail.com' },
-    update: {
-      passwordHash: await bcrypt.hash('Acume.2026', 12),
-      role: 'ADMIN',
-      status: 'ACTIVE',
-      emailVerifiedAt: new Date(),
-      twoFactorEnabled: false,
-      twoFactorSecret: null,
-    },
-    create: {
-      email: 'acumeartificialintelligence@gmail.com',
-      passwordHash: await bcrypt.hash('Acume.2026', 12),
-      role: 'ADMIN',
-      status: 'ACTIVE',
-      emailVerifiedAt: new Date(),
-    },
-  });
+  // Admin reale del proprietario. Email e password arrivano dall'ambiente e non stanno
+  // scritte qui: questo file e' su git, e una password in chiaro in un repository e'
+  // una password gia' persa. Senza le due variabili il seed salta questo blocco, e
+  // l'admin si crea a parte con scripts/create-owner-admin.ts.
+  const ownerEmail = process.env.OWNER_ADMIN_EMAIL?.toLowerCase().trim();
+  const ownerPassword = process.env.OWNER_ADMIN_PASSWORD;
+  if (ownerEmail && ownerPassword) {
+    const ownerHash = await bcrypt.hash(ownerPassword, 12);
+    await db.user.upsert({
+      where: { email: ownerEmail },
+      update: {
+        passwordHash: ownerHash,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        emailVerifiedAt: new Date(),
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+      },
+      create: {
+        email: ownerEmail,
+        passwordHash: ownerHash,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        emailVerifiedAt: new Date(),
+      },
+    });
+    console.log(`Admin proprietario allineato: ${ownerEmail}`);
+  } else {
+    console.log('OWNER_ADMIN_EMAIL/OWNER_ADMIN_PASSWORD non impostate: admin proprietario saltato.');
+  }
 
   const docUser = await db.user.upsert({
     where: { email: 'medico@demo.it' },

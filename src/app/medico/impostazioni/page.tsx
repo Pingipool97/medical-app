@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { Badge, Card, PageTitle, statusBadgeColor } from '@/components/ui';
-import { ProfileForm, AddOfficeForm, RemoveOfficeButton, AddSpecializationForm, RemoveSpecializationButton } from './forms';
+import { ProfileForm, AddOfficeForm, RemoveOfficeButton, SpecializationsForm } from './forms';
 import { NotificationPrefs } from '@/components/notification-prefs';
 import { loadNotificationPrefs } from '@/lib/notif-prefs';
 
@@ -31,8 +31,14 @@ export default async function ImpostazioniPage() {
   let offices: { name: string; address?: string; city?: string }[] = [];
   try { offices = JSON.parse(doctor.offices ?? '[]'); } catch { offices = []; }
 
-  const ownedIds = new Set(doctor.specializations.map((s) => s.specializationId));
-  const addable = allSpecs.filter((s) => !ownedIds.has(s.id)).map((s) => ({ value: s.id, label: s.name }));
+  // Si passano TUTTE le professioni, non solo quelle mancanti: il modulo mostra l'elenco
+  // intero con spuntate quelle gia' possedute, e si toglie una spunta per rimuoverla.
+  const owned = doctor.specializations.map((s) => s.specializationId);
+  const specOptions = allSpecs.map((s) => ({
+    value: s.id,
+    label: s.name,
+    note: s.requiresOrdine ? 'Iscritta a un Ordine professionale' : undefined,
+  }));
   const notifPrefs = await loadNotificationPrefs(session.userId, session.role);
 
   return (
@@ -85,20 +91,12 @@ export default async function ImpostazioniPage() {
         <AddOfficeForm />
       </Card>
 
-      <Card title="Specializzazioni">
-        {doctor.specializations.length === 0 ? (
-          <p className="text-sm text-slate-500 mb-3">Nessuna specializzazione registrata.</p>
-        ) : (
-          <ul className="divide-y divide-slate-100 mb-4">
-            {doctor.specializations.map((s) => (
-              <li key={s.id} className="py-2 flex items-center justify-between gap-2 text-sm">
-                <span>{s.specialization.name}</span>
-                <RemoveSpecializationButton id={s.id} />
-              </li>
-            ))}
-          </ul>
-        )}
-        <AddSpecializationForm options={addable} />
+      <Card title="Professioni e specializzazioni">
+        <p className="text-sm text-slate-600 mb-3">
+          Puoi esercitarne più di una: spunta tutte quelle che ti riguardano. È quello che il paziente
+          legge sotto al tuo nome quando ti cerca.
+        </p>
+        <SpecializationsForm options={specOptions} selected={owned} />
       </Card>
     </div>
   );

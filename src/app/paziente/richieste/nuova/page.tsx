@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { fmtDate } from '@/lib/format';
+import { doctorName, fmtDate, specList } from '@/lib/format';
 import { BackLink, Card, EmergencyBanner, EmptyState, PageTitle } from '@/components/ui';
 import { NewRequestForm } from './form';
 
@@ -16,7 +16,7 @@ export default async function NuovaRichiestaPage() {
   const [links, types, documents] = await Promise.all([
     db.doctorPatientLink.findMany({
       where: { patientId, status: 'ACTIVE' },
-      include: { doctor: true },
+      include: { doctor: { include: { specializations: { include: { specialization: true } } } } },
     }),
     db.requestTypeDef.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     db.document.findMany({
@@ -49,7 +49,7 @@ export default async function NuovaRichiestaPage() {
           <NewRequestForm
             doctors={links.map((l) => ({
               id: l.doctorId,
-              label: `Dr. ${l.doctor.firstName} ${l.doctor.lastName} — risponde entro ${l.doctor.responseTimeHours} ore`,
+              label: `${doctorName(l.doctor)} (${specList(l.doctor, 'professione non indicata')}) — risponde entro ${l.doctor.responseTimeHours} ore`,
             }))}
             types={types.map((t) => ({ value: t.code, label: t.name }))}
             documents={documents.map((d) => ({

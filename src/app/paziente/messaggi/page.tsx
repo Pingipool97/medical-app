@@ -3,7 +3,7 @@ import { Icon } from '@/components/icons';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { fmtDateTime } from '@/lib/format';
+import { doctorName, fmtDateTime, specList } from '@/lib/format';
 import { Alert, Badge, Card, EmptyState, PageTitle } from '@/components/ui';
 import { OpenConversationButton } from './client';
 
@@ -16,7 +16,7 @@ export default async function MessaggiPage() {
 
   const links = await db.doctorPatientLink.findMany({
     where: { patientId, status: 'ACTIVE' },
-    include: { doctor: true },
+    include: { doctor: { include: { specializations: { include: { specialization: true } } } } },
   });
   const conversations = await db.conversation.findMany({
     where: { patientId },
@@ -53,9 +53,10 @@ export default async function MessaggiPage() {
                 <li key={l.id} className="py-3 flex items-center justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-800">
-                      Dr. {l.doctor.firstName} {l.doctor.lastName}
+                      {doctorName(l.doctor)}
                       {unread && <Badge color="blue">Nuovo messaggio</Badge>}
                     </p>
+                    <p className="text-xs font-medium text-brand-700">{specList(l.doctor)}</p>
                     <p className="text-xs text-slate-500 mt-0.5 truncate max-w-md">
                       {last
                         ? `${last.senderRole === 'DOCTOR' ? 'Il medico' : 'Tu'}: ${last.body.slice(0, 80)}${last.body.length > 80 ? '…' : ''} · ${fmtDateTime(last.createdAt)}`

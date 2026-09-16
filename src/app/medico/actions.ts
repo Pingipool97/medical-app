@@ -67,26 +67,43 @@ export async function removeOfficeAction(index: number): Promise<ActionState> {
   return { success: 'Sede rimossa.' };
 }
 
-export async function addSpecializationAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+/**
+ * Riscrive in blocco l'elenco delle professioni del medico: arriva l'insieme completo
+ * di caselle spuntate, non una aggiunta per volta. Il paziente le legge sotto al nome
+ * del medico, quindi devono cambiare tutte insieme o nessuna: niente stato intermedio
+ * in cui il profilo mostra meta' elenco.
+ */
+export async function setSpecializationsAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireSession(['DOCTOR']);
-  const specializationId = String(formData.get('specializationId') ?? '');
-  if (!specializationId) return { error: 'Seleziona una specializzazione.' };
-  const spec = await db.specialization.findUnique({ where: { id: specializationId } });
-  if (!spec || !spec.active) return { error: 'Specializzazione non valida.' };
-  await db.doctorSpecialization.upsert({
-    where: { doctorId_specializationId: { doctorId: session.doctorId!, specializationId } },
-    update: {},
-    create: { doctorId: session.doctorId!, specializationId },
-  });
-  revalidatePath('/medico/impostazioni');
-  return { success: 'Specializzazione aggiunta.' };
-}
+  const doctorId = session.doctorId!;
+  const ids = Array.from(new Set(formData.getAll('specializations').map(String).filter(Boolean)));
+  if (ids.length === 0) return { error: 'Tieni almeno una professione: è quella che il paziente vede sotto al tuo nome.' };
 
-export async function removeSpecializationAction(id: string): Promise<ActionState> {
-  const session = await requireSession(['DOCTOR']);
-  await db.doctorSpecialization.deleteMany({ where: { id, doctorId: session.doctorId! } });
+  const valide = await db.specialization.findMany({ where: { id: { in: ids }, active: true } });
+  if (valide.length !== ids.length) return { error: 'Una delle professioni scelte non è più disponibile. Ricarica la pagina e riprova.' };
+
+  // Un medico senza albo che si aggiunge una professione iscritta a un Ordine deve
+  // passare dalla verifica: il numero lo chiede l'amministrazione, non questo modulo.
+  const doctor = await db.doctorProfile.findUnique({ where: { id: doctorId } });
+  const serveAlbo = valide.some((s) => s.requiresOrdine);
+  if (serveAlbo && !doctor?.ordineNumber) {
+    return { error: 'Per una professione iscritta a un Ordine serve il numero di albo: scrivi all’amministrazione per aggiungerlo.' };
+  }
+
+  await db.$transaction([
+    db.doctorSpecialization.deleteMany({ where: { doctorId, specializationId: { notIn: ids } } }),
+    ...ids.map((specializationId) =>
+      db.doctorSpecialization.upsert({
+        where: { doctorId_specializationId: { doctorId, specializationId } },
+        update: {},
+        create: { doctorId, specializationId },
+      }),
+    ),
+  ]);
+
   revalidatePath('/medico/impostazioni');
-  return { success: 'Specializzazione rimossa.' };
+  revalidatePath('/paziente/medici');
+  return { success: valide.length === 1 ? 'Professione aggiornata.' : `Professioni aggiornate (${valide.length}).` };
 }
 
 // ── Catalogo prestazioni (ServiceCatalog) ──

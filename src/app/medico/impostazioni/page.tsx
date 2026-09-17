@@ -1,9 +1,10 @@
 import { fmtOrdine } from '@/lib/format';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
+import { prestazioniSuggerite } from '@/lib/prestazioni';
 import { getSession } from '@/lib/auth';
 import { Badge, Card, PageTitle, statusBadgeColor } from '@/components/ui';
-import { ProfileForm, AddOfficeForm, RemoveOfficeButton, SpecializationsForm } from './forms';
+import { ProfileForm, AddOfficeForm, RemoveOfficeButton, SpecializationsForm, ServicesForm } from './forms';
 import { NotificationPrefs } from '@/components/notification-prefs';
 import { loadNotificationPrefs } from '@/lib/notif-prefs';
 
@@ -19,12 +20,13 @@ export default async function ImpostazioniPage() {
   const session = await getSession();
   if (!session?.doctorId) redirect('/login');
 
-  const [doctor, allSpecs] = await Promise.all([
+  const [doctor, allSpecs, services] = await Promise.all([
     db.doctorProfile.findUnique({
       where: { id: session.doctorId },
       include: { specializations: { include: { specialization: true } } },
     }),
     db.specialization.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
+    db.serviceCatalog.findMany({ where: { doctorId: session.doctorId }, orderBy: { name: 'asc' } }),
   ]);
   if (!doctor) redirect('/login');
 
@@ -97,6 +99,17 @@ export default async function ImpostazioniPage() {
           legge sotto al tuo nome quando ti cerca.
         </p>
         <SpecializationsForm options={specOptions} selected={owned} />
+      </Card>
+
+      <Card title="Prestazioni prenotabili">
+        <p className="text-sm text-slate-600 mb-3">
+          Finché questo elenco è vuoto il paziente vede «nessuna prestazione prenotabile online» e non
+          può fissare un appuntamento. Le proposte qui sotto vengono dalle professioni che hai scelto.
+        </p>
+        <ServicesForm
+          suggerite={prestazioniSuggerite(doctor.specializations.map((s) => s.specialization.code))}
+          gia={services.map((s) => ({ id: s.id, name: s.name, active: s.active, durationMin: s.durationMin, priceCents: s.priceCents }))}
+        />
       </Card>
     </div>
   );

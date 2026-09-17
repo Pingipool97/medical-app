@@ -129,6 +129,76 @@ export async function createServiceAction(_prev: ActionState, formData: FormData
   return { success: 'Prestazione aggiunta al catalogo.' };
 }
 
+/**
+ * Aggiunta rapida di prestazioni dalle Impostazioni: quelle spuntate fra le proposte
+ * piu' quelle scritte a mano nel campo libero, una per riga.
+ *
+ * Nascono con durata 30 minuti, prezzo da concordare e in presenza o video. Qui si
+ * decide COSA si offre; durata, prezzo e colore si regolano in Agenda, dove c'e' la
+ * scheda completa. Chiedere sei campi a chi sta ancora configurando il profilo e'
+ * il motivo per cui il catalogo resta vuoto e il paziente non riesce a prenotare.
+ *
+ * I nomi gia' presenti vengono saltati, non duplicati: si puo' ripremere Salva senza
+ * ritrovarsi due "Prima visita".
+ */
+export async function addServicesAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireSession(['DOCTOR']);
+  const doctorId = session.doctorId!;
+
+  const spuntate = formData.getAll('prestazioni').map((v) => String(v).trim()).filter(Boolean);
+  const scritte = String(formData.get('prestazioniLibere') ?? '')
+    .split(/\r?\n/)
+    .map((r) => r.trim())
+    .filter(Boolean);
+
+  // Stesso nome scritto due volte, o scritto a mano dopo averlo spuntato: uno solo.
+  const perChiave = new Map<string, string>();
+  for (const nome of [...spuntate, ...scritte]) {
+    if (nome.length > 80) return { error: `Nome troppo lungo: "${nome.slice(0, 40)}…". Massimo 80 caratteri.` };
+    perChiave.set(nome.toLowerCase(), nome);
+  }
+  const nomi = [...perChiave.values()];
+  if (nomi.length === 0) return { error: 'Scegli almeno una prestazione, o scrivine una nel campo libero.' };
+
+  const esistenti = await db.serviceCatalog.findMany({ where: { doctorId }, select: { name: true } });
+  const gia = new Set(esistenti.map((e) => e.name.toLowerCase()));
+  const daCreare = nomi.filter((n) => !gia.has(n.toLowerCase()));
+
+  if (daCreare.length === 0) return { success: 'Erano già tutte nel tuo catalogo: niente da aggiungere.' };
+
+  await db.serviceCatalog.createMany({
+    data: daCreare.map((name) => ({ doctorId, name, durationMin: 30, priceCents: 0, mode: 'ENTRAMBI' })),
+  });
+
+  revalidatePath('/medico/impostazioni');
+  revalidatePath('/medico/agenda');
+  return {
+    success: daCreare.length === 1
+      ? `Aggiunta "${daCreare[0]}". I pazienti possono già prenotarla: durata e prezzo si regolano in Agenda.`
+      : `Aggiunte ${daCreare.length} prestazioni. I pazienti possono già prenotarle: durata e prezzo si regolano in Agenda.`,
+  };
+}
+
+/** Rimozione dalle Impostazioni. Una prestazione gia' usata in un appuntamento non si
+ *  cancella — si disattiva, altrimenti sparirebbe la descrizione di visite passate. */
+export async function removeServiceAction(id: string): Promise<ActionState> {
+  const session = await requireSession(['DOCTOR']);
+  const service = await db.serviceCatalog.findUnique({ where: { id } });
+  if (!service || service.doctorId !== session.doctorId) return { error: 'Prestazione non trovata.' };
+
+  const usata = await db.appointment.count({ where: { serviceId: id } });
+  if (usata > 0) {
+    await db.serviceCatalog.update({ where: { id }, data: { active: false } });
+    revalidatePath('/medico/impostazioni');
+    revalidatePath('/medico/agenda');
+    return { success: 'Prestazione disattivata: non è più prenotabile, ma resta sugli appuntamenti già presi.' };
+  }
+  await db.serviceCatalog.delete({ where: { id } });
+  revalidatePath('/medico/impostazioni');
+  revalidatePath('/medico/agenda');
+  return { success: 'Prestazione rimossa.' };
+}
+
 export async function updateServiceAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireSession(['DOCTOR']);
   const id = String(formData.get('id') ?? '');

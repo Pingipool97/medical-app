@@ -34,6 +34,7 @@ async function main() {
     ['oncologia', 'Oncologia', true], ['psichiatria', 'Psichiatria', true], ['odontoiatria', 'Odontoiatria', true],
     ['allergologia', 'Allergologia', true], ['nefrologia', 'Nefrologia', true], ['ematologia', 'Ematologia', true],
     ['medicina_sport', 'Medicina dello sport', true], ['nutrizione', 'Nutrizione', true], ['fisiatria', 'Fisiatria', true],
+    ['fisioterapia', 'Fisioterapia', true],
     ['medicina_generale', 'Medicina generale', true], ['pediatria', 'Pediatria', true], ['chirurgia_generale', 'Chirurgia generale', true],
     ['radiologia', 'Radiologia', true], ['angiologia', 'Angiologia', true], ['geriatria', 'Geriatria', true],
     // Professioni senza obbligo di iscrizione a un Ordine

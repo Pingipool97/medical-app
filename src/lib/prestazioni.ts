@@ -11,6 +11,7 @@
 export const PRESTAZIONI_SUGGERITE: Record<string, string[]> = {
   // ── Area fisio e benessere ──
   fisiatria: ['Prima visita fisiatrica', 'Visita di controllo', 'Infiltrazione', 'Valutazione posturale'],
+  fisioterapia: ['Prima valutazione fisioterapica', 'Seduta di fisioterapia', 'Terapia manuale', 'Rieducazione funzionale', 'Rieducazione post-operatoria', 'Tecar / terapia strumentale', 'Linfodrenaggio'],
   chinesiologo_clinico: ['Valutazione funzionale', 'Ginnastica posturale', 'Rieducazione motoria', 'Allenamento personalizzato'],
   massofisioterapista: ['Seduta di massofisioterapia', 'Terapia manuale', 'Rieducazione post-operatoria', 'Linfodrenaggio'],
   massofisioterapista_mcb: ['Seduta di massofisioterapia', 'Terapia manuale', 'Rieducazione post-operatoria', 'Linfodrenaggio'],

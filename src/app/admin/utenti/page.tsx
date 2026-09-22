@@ -49,7 +49,9 @@ export default async function UtentiPage({ searchParams }: { searchParams?: SP }
 
   const [pendingDoctors, users, total] = await Promise.all([
     db.doctorProfile.findMany({
-      where: { verificationStatus: 'PENDING' },
+      // Vedi la nota in /admin: elenco di chi non e' ancora passato sotto gli occhi di
+      // un admin, non di chi e' bloccato — all'iscrizione sono tutti gia' operativi.
+      where: { adminReviewedAt: null, verificationStatus: { not: 'REJECTED' } },
       include: {
         user: { select: { email: true, createdAt: true } },
         specializations: { include: { specialization: true } },
@@ -70,9 +72,9 @@ export default async function UtentiPage({ searchParams }: { searchParams?: SP }
       <PageTitle title="Gestione utenti" subtitle="Verifica dei medici, sospensioni e stato degli account." />
 
       <div className="space-y-4">
-        <Card title={`Medici in attesa di verifica (${pendingDoctors.length})`} className="border-amber-300">
+        <Card title={`Medici da controllare — già operativi (${pendingDoctors.length})`} className="border-amber-300">
           {pendingDoctors.length === 0 ? (
-            <EmptyState title="Nessun medico in attesa di verifica" />
+            <EmptyState title="Nessun professionista da controllare" />
           ) : (
             <div className="space-y-4">
               {pendingDoctors.map((d) => (
@@ -90,7 +92,8 @@ export default async function UtentiPage({ searchParams }: { searchParams?: SP }
                     <p className="text-slate-600">Email: {d.user.email}</p>
                     <p className="text-xs text-slate-500">Registrato il {fmtDateTime(d.user.createdAt)}</p>
                     <p className="text-xs text-slate-500">
-                      Finché non è verificato, il medico non può emettere documenti né ricevere pazienti.
+                      Già operativo dall’iscrizione: confermando resta tale e sparisce da questo elenco.
+                      Rifiutando perde subito emissione documenti, pazienti e visibilità ai pazienti.
                     </p>
                   </div>
                   <VerifyDoctorForm doctorId={d.id} />

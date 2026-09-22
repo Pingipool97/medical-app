@@ -490,6 +490,8 @@ export async function verifyDoctorAction(_prev: ActionState, formData: FormData)
       verificationStatus: decision,
       verifiedAt: new Date(),
       verifiedByUserId: s.userId,
+      // Traccia del controllo umano: e' questo che lo toglie dalla coda.
+      adminReviewedAt: new Date(),
       verificationNote: note || null,
     },
   });

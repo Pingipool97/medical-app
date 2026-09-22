@@ -42,7 +42,9 @@ export default async function AdminDashboard() {
       db.aiJob.aggregate({ _sum: { costCents: true }, where: { createdAt: { gte: monthStart } } }),
       db.user.groupBy({ by: ['role'], _count: { _all: true }, where: { status: { not: 'DELETED' } } }),
       db.doctorProfile.findMany({
-        where: { verificationStatus: 'PENDING' },
+        // Da controllare, non da sbloccare: sono verificati d'ufficio all'iscrizione e
+        // lavorano gia'. Qui restano finche' un admin non li guarda (adminReviewedAt).
+        where: { adminReviewedAt: null, verificationStatus: { not: 'REJECTED' } },
         include: { user: { select: { email: true } } },
         orderBy: { id: 'asc' },
         take: 5,
@@ -57,7 +59,9 @@ export default async function AdminDashboard() {
       db.aiJob.count({ where: { status: 'ERROR', createdAt: { gte: last24h } } }),
     ]);
 
-  const pendingDoctorsCount = await db.doctorProfile.count({ where: { verificationStatus: 'PENDING' } });
+  const pendingDoctorsCount = await db.doctorProfile.count({
+    where: { adminReviewedAt: null, verificationStatus: { not: 'REJECTED' } },
+  });
   const dayUsed = daySum._sum.costCents ?? 0;
   const monthUsed = monthSum._sum.costCents ?? 0;
   const dayPct = caps.dailyCents > 0 ? (dayUsed / caps.dailyCents) * 100 : 0;
@@ -109,7 +113,7 @@ export default async function AdminDashboard() {
         </Card>
 
         <Card
-          title={`Medici in attesa di verifica (${pendingDoctorsCount})`}
+          title={`Medici da controllare — già operativi (${pendingDoctorsCount})`}
           action={<Link href="/admin/utenti" className="text-sm text-brand-700 hover:underline">Verifica →</Link>}
         >
           {pendingDoctors.length === 0 ? (

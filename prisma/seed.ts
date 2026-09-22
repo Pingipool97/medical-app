@@ -242,6 +242,7 @@ async function main() {
     ['appuntamento_annullato', 'Appuntamento annullato'], ['collegamento_richiesto', 'Richiesta di collegamento'],
     ['collegamento_attivo', 'Collegamento attivato'], ['bozza_ia_in_attesa', 'Bozza IA in attesa di revisione'],
     ['slot_liberato', 'Slot liberato (lista d’attesa)'], ['red_flag', 'Messaggio con sintomi d’allarme'],
+    ['medico_registrato', 'Nuovo professionista iscritto (da controllare)'],
   ];
   for (const [eventKey, label] of events) {
     await db.notificationRule.upsert({
@@ -350,6 +351,7 @@ async function main() {
       structureName: 'Studio Medico Bianchi',
       offices: JSON.stringify([{ name: 'Studio Milano', address: 'Via Roma 1', city: 'Milano' }]),
       verificationStatus: 'VERIFIED', verifiedAt: new Date(), verifiedByUserId: admin.id,
+      adminReviewedAt: new Date(),
       responseTimeHours: 48,
     },
   });

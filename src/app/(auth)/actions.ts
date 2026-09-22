@@ -10,6 +10,7 @@ import {
 import { encryptField, lookupHash } from '@/lib/crypto';
 import { cfMatchesBirth, validateCodiceFiscale } from '@/lib/cf';
 import { audit } from '@/lib/audit';
+import { notify } from '@/lib/notify';
 import { flagEnabled } from '@/lib/settings';
 import { FEATURE_FLAGS } from '@/lib/constants';
 
@@ -226,7 +227,9 @@ export async function registerDoctorAction(_prev: ActionState, formData: FormDat
       email,
       passwordHash: await hashPassword(d.password),
       role: 'DOCTOR',
-      status: 'PENDING_VERIFICATION',
+      // Attivo da subito: il controllo dell'admin non e' piu' un cancello in ingresso
+      // ma una revisione che avviene dopo, a professionista gia' al lavoro.
+      status: 'ACTIVE',
       doctorProfile: {
         create: {
           firstName: d.firstName.trim(),
@@ -236,7 +239,12 @@ export async function registerDoctorAction(_prev: ActionState, formData: FormDat
           ordineProvince: requiresOrdine ? ordineProvince : null,
           vatNumber: d.vatNumber?.trim() || null,
           structureName: d.structureName?.trim() || null,
-          verificationStatus: 'PENDING', // nessuna emissione finché l'admin non verifica l'identità professionale
+          // Verifica concessa all'iscrizione: chi si registra lavora immediatamente,
+          // senza avvisi ne' funzioni bloccate. verifiedByUserId resta null e
+          // adminReviewedAt non viene valorizzato: e' cosi' che il profilo finisce
+          // nella coda di controllo dell'admin, che decide con calma e puo' revocare.
+          verificationStatus: 'VERIFIED',
+          verifiedAt: new Date(),
           specializations: { create: specs.map((s) => ({ specializationId: s.id })) },
         },
       },
@@ -247,6 +255,27 @@ export async function registerDoctorAction(_prev: ActionState, formData: FormDat
   if (v) await db.consentRecord.create({ data: { userId: user.id, consentVersionId: v.id, ip } });
 
   await audit({ actorUserId: user.id, actorRole: 'DOCTOR', action: 'REGISTER', ip });
+
+  // Il professionista e' gia' operativo, quindi l'avviso all'admin non e' una richiesta
+  // di sbloccarlo: e' il campanello del controllo a posteriori. Un errore qui non deve
+  // far fallire un'iscrizione andata a buon fine.
+  try {
+    const admins = await db.user.findMany({ where: { role: 'ADMIN', status: 'ACTIVE' }, select: { id: true } });
+    const professioni = specs.map((s) => s.name).join(', ');
+    const albo = requiresOrdine && ordineNumber ? ` — Ordine ${ordineNumber} (${ordineProvince})` : '';
+    for (const a of admins) {
+      await notify({
+        userId: a.id,
+        eventKey: 'medico_registrato',
+        title: 'Nuovo professionista da controllare',
+        body: `${d.firstName.trim()} ${d.lastName.trim()} (${professioni})${albo} si è registrato ed è già operativo. Da verificare in Utenti.`,
+        refType: 'DoctorProfile',
+        refId: user.doctorProfile?.id,
+      });
+    }
+  } catch (e) {
+    console.error('Avviso admin per nuova iscrizione medico non inviato:', e);
+  }
   // Il medico entra subito. Se un domani si riaccende ENABLE_2FA, la configura qui.
   const twoFa = needsTwoFactor('DOCTOR');
   await createSession(buildSessionPayload(user, twoFa));

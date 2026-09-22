@@ -110,6 +110,11 @@ model DoctorProfile {
   verificationStatus String    @default("PENDING") // PENDING | VERIFIED | REJECTED — un medico non verificato non emette nulla
   verifiedAt         DateTime?
   verifiedByUserId   String?
+  // Verifica automatica all'iscrizione: il professionista lavora subito, il controllo
+  // dell'admin avviene dopo. verificationStatus da solo non distingue piu' i due casi,
+  // quindi qui resta la traccia del controllo umano: null = ancora da guardare, ed e'
+  // questo che popola la coda in /admin. Sull'automatica verifiedByUserId resta null.
+  adminReviewedAt    DateTime?
   verificationNote   String?
   responseTimeHours  Int       @default(48) // tempo di risposta dichiarato, mostrato al paziente
   // L'IA per il professionista è inclusa: si monetizza nel prezzo di vendita dell'app,
